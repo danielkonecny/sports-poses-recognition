@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+# Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
+# Script for easy converting of multiple videos to format suitable for training dataset.
+# Organisation: Brno University of Technology - Faculty of Information Technology
+# Author: Daniel Konecny (xkonec75)
+# Date: 06. 10. 2021
+
 # Input Video Information
 in_w=1920
 in_h=1080
@@ -19,7 +25,7 @@ scale_w=320
 scale_h=-1
 
 # Framerate Settings
-fps=30
+fps=29.97
 
 # Audio handling
 # -an - removes audio
@@ -32,7 +38,7 @@ do
     out_suffix=${file##*.}
     ffmpeg \
         -i "$file" \
-        -filter:v "crop=$crop_w:$crop_h:$crop_start_w:$crop_start_h, fps=$fps, scale=$scale_w:$scale_h" \
+        -filter:v "crop=$crop_w:$crop_h:$crop_start_w:$crop_start_h, scale=$scale_w:$scale_h, fps=$fps" \
         -an \
         "$out_dir""$out_file"_ffmpeged."$out_suffix"
 done
