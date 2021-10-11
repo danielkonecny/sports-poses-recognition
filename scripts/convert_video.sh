@@ -15,8 +15,8 @@ in_dir=../../dip-data/in/
 out_dir=../../dip-data/out/
 
 # Crop Settings (computes values to crop the center of the video)
-crop_w=960
-crop_h=960
+crop_w=1080
+crop_h=1080
 crop_start_w=$in_w/2-$crop_w/2
 crop_start_h=$in_h/2-$crop_h/2
 
@@ -42,4 +42,20 @@ do
         -an \
         "$out_dir""$out_file"_ffmpeged."$out_suffix"
 done
+
+# OTHER USEFUL FFMPEG COMMANDS
+
+# Lossless conversion of MTS to MP4
+# ffmpeg -i input.MTS -c:v copy -c:a aac -strict experimental -b:a 128k output.mp4
+
+# Concatenation of file not supporting file-level concatenation (MP4)
+# touch videos.txt
+# insert word "file" + path to video file
+    #file '/path/to/file1'
+    #file '/path/to/file2'
+    #file '/path/to/file3'
+# ffmpeg -f concat -safe 0 -i videos.txt -c copy output.mp4
+
+# Cut videos by timestamp (with re-encoding to have a correct starting frame).
+# ffmpeg -ss 00:01:00 -i input.mp4 -to 00:02:00 -c:v libx264 output.mp4
 
