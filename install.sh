@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Self-Supervised Learning for Recognition of Sports Poses in Image
-# Master's Thesis Project
+# Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
+# Install script for Python environment.
 # Organisation: Brno University of Technology - Faculty of Information Technology
 # Author: Daniel Konecny (xkonec75)
 # Date: 06. 10. 2021
