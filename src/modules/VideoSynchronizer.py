@@ -5,8 +5,9 @@ Author: Daniel Konecny (xkonec75)
 Date: 12. 10. 2021
 """
 
-import os
 from argparse import ArgumentParser
+import os
+import re
 
 import numpy as np
 from scipy.stats import pearsonr
@@ -25,7 +26,7 @@ def get_timestamp_from_seconds(seconds):
     if seconds > 60:
         minutes = int(seconds // 60)
         seconds %= 60
-    return f"{hours:02d}:{minutes:02d}:{int(seconds):02d}.{milliseconds:03d}."
+    return f"{hours:02d}:{minutes:02d}:{int(seconds):02d}.{milliseconds:03d}"
 
 
 class VideoSynchronizer:
@@ -36,6 +37,8 @@ class VideoSynchronizer:
         self.flows = []
         self.differences = [0]
         self.fps = []
+        self.flow1 = 0
+        self.flow2 = 1
 
     def load_flows(self):
         print("Loading flows.")
@@ -61,30 +64,19 @@ class VideoSynchronizer:
         print(f"Flows calculated: {len(self.flows)}.")
 
     def check_length(self):
-        print("Checking length of flows.")
+        print("Checking length of flows, first one has to be shorter than second.")
 
-        flow1 = self.flows[0]
-        flow2 = self.flows[1]
-
-        video1 = self.videos[0]
-        video2 = self.videos[1]
-
-        if len(flow1) > len(flow2):
+        if len(self.flows[self.flow1]) > len(self.flows[self.flow2]):
             print("Videos switched due to length (first has to be shorter than second).")
-            self.flows[0] = flow2
-            self.flows[1] = flow1
-
-            self.videos[0] = video2
-            self.videos[1] = video1
+            temp = self.flow1
+            self.flow1 = self.flow2
+            self.flow2 = temp
 
     def calc_correlation(self):
         print("Calculating correlation of flows.")
 
-        flow1 = self.flows[0]
-        flow2 = self.flows[1]
-
-        len1 = len(flow1)
-        len2 = len(flow2)
+        len1 = len(self.flows[self.flow1])
+        len2 = len(self.flows[self.flow2])
 
         if self.overlay > len1 or self.overlay > len2:
             print("Overlay too big, automatically decreased to default value 1000.")
@@ -94,37 +86,44 @@ class VideoSynchronizer:
 
         for i in range(self.overlay, len1 + len2 - self.overlay + 1):
             if i <= len1:
-                correlation[i - self.overlay][0], _ = pearsonr(flow1[len1 - i:, 0], flow2[:i, 0])
-                correlation[i - self.overlay][1], _ = pearsonr(flow1[len1 - i:, 1], flow2[:i, 1])
-                correlation[i - self.overlay][2], _ = pearsonr(flow1[len1 - i:, 2], flow2[:i, 2])
-                correlation[i - self.overlay][3], _ = pearsonr(flow1[len1 - i:, 3], flow2[:i, 3])
+                correlation[i - self.overlay][0], _ = pearsonr(self.flows[self.flow1][len1 - i:, 0],
+                                                               self.flows[self.flow2][:i, 0])
+                correlation[i - self.overlay][1], _ = pearsonr(self.flows[self.flow1][len1 - i:, 1],
+                                                               self.flows[self.flow2][:i, 1])
+                correlation[i - self.overlay][2], _ = pearsonr(self.flows[self.flow1][len1 - i:, 2],
+                                                               self.flows[self.flow2][:i, 2])
+                correlation[i - self.overlay][3], _ = pearsonr(self.flows[self.flow1][len1 - i:, 3],
+                                                               self.flows[self.flow2][:i, 3])
             elif i <= len2:
-                correlation[i - self.overlay][0], _ = pearsonr(flow1[:, 0], flow2[i - len1:i, 0])
-                correlation[i - self.overlay][1], _ = pearsonr(flow1[:, 1], flow2[i - len1:i, 1])
-                correlation[i - self.overlay][2], _ = pearsonr(flow1[:, 2], flow2[i - len1:i, 2])
-                correlation[i - self.overlay][3], _ = pearsonr(flow1[:, 3], flow2[i - len1:i, 3])
+                correlation[i - self.overlay][0], _ = pearsonr(self.flows[self.flow1][:, 0],
+                                                               self.flows[self.flow2][i - len1:i, 0])
+                correlation[i - self.overlay][1], _ = pearsonr(self.flows[self.flow1][:, 1],
+                                                               self.flows[self.flow2][i - len1:i, 1])
+                correlation[i - self.overlay][2], _ = pearsonr(self.flows[self.flow1][:, 2],
+                                                               self.flows[self.flow2][i - len1:i, 2])
+                correlation[i - self.overlay][3], _ = pearsonr(self.flows[self.flow1][:, 3],
+                                                               self.flows[self.flow2][i - len1:i, 3])
             else:
-                correlation[i - self.overlay][0], _ = pearsonr(flow1[:len1 - (i - len2), 0], flow2[i - len1:, 0])
-                correlation[i - self.overlay][1], _ = pearsonr(flow1[:len1 - (i - len2), 1], flow2[i - len1:, 1])
-                correlation[i - self.overlay][2], _ = pearsonr(flow1[:len1 - (i - len2), 2], flow2[i - len1:, 2])
-                correlation[i - self.overlay][3], _ = pearsonr(flow1[:len1 - (i - len2), 3], flow2[i - len1:, 3])
+                correlation[i - self.overlay][0], _ = pearsonr(self.flows[self.flow1][:len1 - (i - len2), 0],
+                                                               self.flows[self.flow2][i - len1:, 0])
+                correlation[i - self.overlay][1], _ = pearsonr(self.flows[self.flow1][:len1 - (i - len2), 1],
+                                                               self.flows[self.flow2][i - len1:, 1])
+                correlation[i - self.overlay][2], _ = pearsonr(self.flows[self.flow1][:len1 - (i - len2), 2],
+                                                               self.flows[self.flow2][i - len1:, 2])
+                correlation[i - self.overlay][3], _ = pearsonr(self.flows[self.flow1][:len1 - (i - len2), 3],
+                                                               self.flows[self.flow2][i - len1:, 3])
 
         return correlation
 
     def calc_difference(self, correlation):
-        flow1 = self.flows[0]
-        flow2 = self.flows[1]
-
         sum_correlation = np.abs(correlation).sum(axis=1)
+
         best_match = np.argpartition(sum_correlation, -1)[-1:][0]
 
-        print(f"Length of first video: {len(flow1)}.")
-        print(f"Length of second video: {len(flow2)}.")
-        print(f"Overlay of videos taken into account: {self.overlay}.")
-        print(f"Number of possible video combinations: {len(correlation)}.")
-        print(f"Index of best match: {best_match}.")
-
-        self.differences.append(self.overlay + best_match - len(flow1))
+        if self.flow1 > self.flow2:  # Flows were switched.
+            self.differences.append(-(self.overlay + best_match - len(self.flows[self.flow1])))
+        else:
+            self.differences.append(self.overlay + best_match - len(self.flows[self.flow1]))
 
     def get_fps(self):
         print("Getting fps.")
@@ -134,28 +133,74 @@ class VideoSynchronizer:
             print(f"Video {video} has {self.fps[-1]} fps.")
 
     def calc_cuts(self):
-        new_len1 = len(self.flows[0])
-        new_len2 = len(self.flows[1])
-
         self.get_fps()
 
-        difference = self.differences[1]
+        latest = min(self.differences)
+        new_lengths = []
+        for i in range(len(self.differences)):
+            self.differences[i] -= latest
+            new_lengths.append(len(self.flows[i]) - self.differences[i])
 
-        if difference < 0:
-            new_len1 -= -difference
-            print(f"Cut video {self.videos[0]} from {get_timestamp_from_seconds(-difference / self.fps[0])}")
-        elif difference > 0:
-            new_len2 -= difference
-            print(f"Cut video {self.videos[1]} from {get_timestamp_from_seconds(difference / self.fps[1])}")
-        else:
-            print("Videos start at the same time.")
+        shortest = min(new_lengths)
 
-        if new_len1 > new_len2:
-            print(f"Cut video {self.videos[0]} after (duration) {get_timestamp_from_seconds(new_len2 / self.fps[0])}")
-        elif new_len1 < new_len2:
-            print(f"Cut video {self.videos[1]} after (duration) {get_timestamp_from_seconds(new_len1 / self.fps[1])}")
-        else:
-            print("Videos end at the same time.")
+        for i in range(len(self.differences)):
+            start_time = get_timestamp_from_seconds(self.differences[i] / self.fps[i])
+            duration = get_timestamp_from_seconds(shortest / self.fps[i])
+            print(f"Cut video {self.directory}/{self.videos[i]} from {start_time} for (duration) {duration}.")
+
+        return shortest
+
+    def create_script(self, shortest):
+        with open(f'{self.directory}/cut_videos.sh', 'w') as script:
+            script.write("# Script automatically created with VideoSynchronizer module.\n")
+            script.write("# Author: Daniel Konecny (xkonec75).\n")
+            for i in range(len(self.differences)):
+                start_time = get_timestamp_from_seconds(self.differences[i] / self.fps[i])
+                duration = get_timestamp_from_seconds(shortest / self.fps[i])
+
+                script.write(f'\nffmpeg \\\n'
+                             f'-ss {start_time} \\\n'
+                             f'-i {self.videos[i]} \\\n'
+                             f'-t {duration} \\\n'
+                             f'-codec:v libx264 \\\n'
+                             f'{self.videos[i].replace(".mp4", "_synced.mp4")}\n')
+
+            if 2 <= len(self.differences) <= 4:
+                script.write(f'\nffmpeg \\\n')
+                for i in range(len(self.differences)):
+                    script.write(f'-i {self.videos[i].replace(".mp4", "_synced.mp4")} ')
+                script.write(f'\\\n')
+
+            if len(self.differences) == 2:
+                script.write(f'-filter_complex hstack \\\n')
+            elif len(self.differences) == 3:
+                script.write(f'-filter_complex "[0:v][1:v][2:v]hstack=inputs=3[v]" \\\n'
+                             f'-map "[v]" \\\n')
+            elif len(self.differences) == 4:
+                script.write(
+                    f'-filter_complex "[0:v][1:v][2:v][3:v]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[v]" \\\n'
+                    f'-map "[v]" \\\n')
+
+            if 2 <= len(self.differences) <= 4:
+                output_name = re.sub(r"video\d", "stacked", self.videos[0])
+                script.write(f'-codec:v libx264 \\\n'
+                             f'{output_name}\n')
+
+    def synchronize_videos(self):
+        for flow_index in range(1, len(self.flows)):
+            self.flow1 = 0
+            self.flow2 = flow_index
+
+            print(f"Using flows {self.flow1} and {self.flow2}.")
+
+            # Check if flow1 is shorter then flow2, if not, switch indices.
+            self.check_length()
+
+            correlation = self.calc_correlation()
+            self.calc_difference(correlation)
+
+        shortest = self.calc_cuts()
+        self.create_script(shortest)
 
 
 def main():
@@ -185,11 +230,7 @@ def main():
     else:
         video_synchronizer.calculate_flows()
 
-    video_synchronizer.check_length()
-
-    correlation = video_synchronizer.calc_correlation()
-    video_synchronizer.calc_difference(correlation)
-    video_synchronizer.calc_cuts()
+    video_synchronizer.synchronize_videos()
 
 
 if __name__ == "__main__":

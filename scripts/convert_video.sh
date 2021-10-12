@@ -66,6 +66,8 @@ done
 # - Two videos:
 # ffmpeg -i left.mp4 -i right.mp4 -filter_complex hstack -c:v libx264 -crf 0 output.mp4
 # - Three videos:
-# ffmpeg -i output0.mp4 -i output1.mp4 -i output2.mp4 -filter_complex "[0:v][1:v][2:v]hstack=inputs=3[v]" -map "[v]" -c:v libx264 -crf 0 output.mp4
+# ffmpeg -i input0.mp4 -i input1.mp4 -i input2.mp4 -filter_complex "[0:v][1:v][2:v]hstack=inputs=3[v]" -map "[v]" -c:v libx264 -crf 0 output.mp4
+# - Four videos:
+# ffmpeg -i input0.mp4 -i input1.mp4 -i input2.mp4 -i input3.mp4 -filter_complex "[0:v][1:v][2:v][3:v]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[v]" -map "[v]" -c:v libx264 -crf 0 output.mp4
 # - Other options:
 # https://stackoverflow.com/questions/11552565/vertically-or-horizontally-stack-mosaic-several-videos-using-ffmpeg
