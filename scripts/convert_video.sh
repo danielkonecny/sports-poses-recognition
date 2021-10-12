@@ -4,7 +4,7 @@
 # Script for easy converting of multiple videos to format suitable for training dataset.
 # Organisation: Brno University of Technology - Faculty of Information Technology
 # Author: Daniel Konecny (xkonec75)
-# Date: 06. 10. 2021
+# Date: 12. 10. 2021
 
 # Input Video Information
 in_w=1920
@@ -56,6 +56,16 @@ done
     #file '/path/to/file3'
 # ffmpeg -f concat -safe 0 -i videos.txt -c copy output.mp4
 
-# Cut videos by timestamp (with re-encoding to have a correct starting frame).
-# ffmpeg -ss 00:01:00 -i input.mp4 -to 00:02:00 -c:v libx264 output.mp4
+# Quality of conversion (crf) - 0=lossless - 23=default - 51=worst quality
+# ffmpeg -c:v libx264 -crf 0
 
+# Cut videos by timestamp (with re-encoding to have a correct starting frame).
+# ffmpeg -ss 00:00:00.000 -i input.mp4 -t 00:00:00.000 -c:v libx264 -crf 0 output.mp4
+
+# Place videos next to each other
+# - Two videos:
+# ffmpeg -i left.mp4 -i right.mp4 -filter_complex hstack -c:v libx264 -crf 0 output.mp4
+# - Three videos:
+# ffmpeg -i output0.mp4 -i output1.mp4 -i output2.mp4 -filter_complex "[0:v][1:v][2:v]hstack=inputs=3[v]" -map "[v]" -c:v libx264 -crf 0 output.mp4
+# - Other options:
+# https://stackoverflow.com/questions/11552565/vertically-or-horizontally-stack-mosaic-several-videos-using-ffmpeg
