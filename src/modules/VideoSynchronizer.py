@@ -2,7 +2,7 @@
 Module for synchronization of multiple videos of the same scene.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 12. 10. 2021
+Date: 14. 10. 2021
 """
 
 from argparse import ArgumentParser
@@ -33,7 +33,7 @@ class VideoSynchronizer:
     def __init__(self, directory, overlay=1000):
         self.directory = directory
         self.overlay = overlay
-        self.videos = []
+        self.files = []
         self.flows = []
         self.differences = [0]
         self.fps = []
@@ -41,17 +41,16 @@ class VideoSynchronizer:
         self.flow2 = 1
 
     def load_flows(self):
-        print("Loading flows.")
+        print("Loading flows...")
 
         for file in os.listdir(self.directory):
             if file.endswith('.npy'):
                 self.flows.append(np.load(f'{self.directory}/{file}'))
-                self.videos.append(file.replace("npy", "mp4"))
-
-        print(f"Flows loaded: {len(self.flows)}.")
+                self.files.append(file.replace('.npy', ''))
+                print(f"- Flow {file} loaded.")
 
     def calculate_flows(self):
-        print("Calculating flows.")
+        print("Calculating flows...")
 
         optical_flow_calc = OpticalFlowCalculator.OpticalFlowCalculator(self.directory)
 
@@ -59,27 +58,26 @@ class VideoSynchronizer:
             if file.endswith('.mp4'):
                 flow = optical_flow_calc.process_video(file)
                 self.flows.append(flow)
-                self.videos.append(file)
-
-        print(f"Flows calculated: {len(self.flows)}.")
+                self.files.append(file.replace('.mp4', ''))
+                print(f"- Flow from video {file} calculated.")
 
     def check_length(self):
-        print("Checking length of flows, first one has to be shorter than second.")
+        print("Checking length of flows...")
 
         if len(self.flows[self.flow1]) > len(self.flows[self.flow2]):
-            print("Videos switched due to length (first has to be shorter than second).")
+            print("- Videos switched due to length (first has to be shorter than second).")
             temp = self.flow1
             self.flow1 = self.flow2
             self.flow2 = temp
 
     def calc_correlation(self):
-        print("Calculating correlation of flows.")
+        print("Calculating correlation of flows...")
 
         len1 = len(self.flows[self.flow1])
         len2 = len(self.flows[self.flow2])
 
         if self.overlay > len1 or self.overlay > len2:
-            print("Overlay too big, automatically decreased to default value 1000.")
+            print("- Overlay too big, automatically decreased to default value 1000.")
             self.overlay = 1000
 
         correlation = np.empty((len1 + len2 - 2 * self.overlay + 1, 4))
@@ -126,13 +124,14 @@ class VideoSynchronizer:
             self.differences.append(self.overlay + best_match - len(self.flows[self.flow1]))
 
     def get_fps(self):
-        print("Getting fps.")
-        for video in self.videos:
-            cap = cv2.VideoCapture(f'{self.directory}/{video}')
+        print("Getting fps...")
+        for video in self.files:
+            cap = cv2.VideoCapture(f'{self.directory}/{video}.mp4')
             self.fps.append(cap.get(cv2.CAP_PROP_FPS))
-            print(f"Video {video} has {self.fps[-1]} fps.")
+            print(f"- Video {video}.mp4 has {self.fps[-1]} fps.")
 
     def calc_cuts(self):
+        print("\nVideo cutting suggestions:")
         self.get_fps()
 
         latest = min(self.differences)
@@ -146,7 +145,7 @@ class VideoSynchronizer:
         for i in range(len(self.differences)):
             start_time = get_timestamp_from_seconds(self.differences[i] / self.fps[i])
             duration = get_timestamp_from_seconds(shortest / self.fps[i])
-            print(f"Cut video {self.directory}/{self.videos[i]} from {start_time} for (duration) {duration}.")
+            print(f"- Cut video {self.directory}/{self.files[i]}.mp4 from {start_time} for (duration) {duration}.")
 
         return shortest
 
@@ -160,15 +159,15 @@ class VideoSynchronizer:
 
                 script.write(f'\nffmpeg \\\n'
                              f'-ss {start_time} \\\n'
-                             f'-i {self.videos[i]} \\\n'
+                             f'-i {self.files[i]}.mp4 \\\n'
                              f'-t {duration} \\\n'
                              f'-codec:v libx264 \\\n'
-                             f'{self.videos[i].replace(".mp4", "_synced.mp4")}\n')
+                             f'{self.files[i]}_synced.mp4\n')
 
             if 2 <= len(self.differences) <= 4:
                 script.write(f'\nffmpeg \\\n')
                 for i in range(len(self.differences)):
-                    script.write(f'-i {self.videos[i].replace(".mp4", "_synced.mp4")} ')
+                    script.write(f'-i {self.files[i]}_synced.mp4 ')
                 script.write(f'\\\n')
 
             if len(self.differences) == 2:
@@ -182,16 +181,18 @@ class VideoSynchronizer:
                     f'-map "[v]" \\\n')
 
             if 2 <= len(self.differences) <= 4:
-                output_name = re.sub(r"video\d", "stacked", self.videos[0])
+                output_name = re.sub(r"video\d", "stacked", f"{self.files[0]}.mp4")
                 script.write(f'-codec:v libx264 \\\n'
                              f'{output_name}\n')
+
+            print("Synchronization script created.")
 
     def synchronize_videos(self):
         for flow_index in range(1, len(self.flows)):
             self.flow1 = 0
             self.flow2 = flow_index
 
-            print(f"Using flows {self.flow1} and {self.flow2}.")
+            print(f"\nUsing flows {self.flow1} and {self.flow2}.")
 
             # Check if flow1 is shorter then flow2, if not, switch indices.
             self.check_length()
@@ -200,7 +201,14 @@ class VideoSynchronizer:
             self.calc_difference(correlation)
 
         shortest = self.calc_cuts()
-        self.create_script(shortest)
+        return shortest
+
+    def export_flows(self, shortest):
+        print("Exporting synced flows...")
+        for index in range(len(self.flows)):
+            print(f"- Flow {self.files[index]}_synced.npy exported.")
+            np.save(f'{self.directory}/{self.files[index]}_synced.npy',
+                    self.flows[index][self.differences[index]:self.differences[index] + shortest])
 
 
 def main():
@@ -230,7 +238,9 @@ def main():
     else:
         video_synchronizer.calculate_flows()
 
-    video_synchronizer.synchronize_videos()
+    shortest = video_synchronizer.synchronize_videos()
+    video_synchronizer.create_script(shortest)
+    video_synchronizer.export_flows(shortest)
 
 
 if __name__ == "__main__":
