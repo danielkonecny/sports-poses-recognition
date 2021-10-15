@@ -4,7 +4,7 @@
 # Script for easy converting of multiple videos to format suitable for training dataset.
 # Organisation: Brno University of Technology - Faculty of Information Technology
 # Author: Daniel Konecny (xkonec75)
-# Date: 12. 10. 2021
+# Date: 14. 10. 2021
 
 # Input Video Information
 in_w=1920
@@ -21,11 +21,11 @@ crop_start_w=$in_w/2-$crop_w/2
 crop_start_h=$in_h/2-$crop_h/2
 
 # Scale Settings - -1 for keeping the same ratio
-scale_w=320
+scale_w=224
 scale_h=-1
 
 # Framerate Settings
-fps=29.97
+fps=20
 
 # Audio handling
 # -an - removes audio
@@ -40,7 +40,7 @@ do
         -i "$file" \
         -filter:v "crop=$crop_w:$crop_h:$crop_start_w:$crop_start_h, scale=$scale_w:$scale_h, fps=$fps" \
         -an \
-        "$out_dir""$out_file"_ffmpeged."$out_suffix"
+        "$out_dir""$out_file"_normalized."$out_suffix"
 done
 
 # OTHER USEFUL FFMPEG COMMANDS
