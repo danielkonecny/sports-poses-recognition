@@ -181,7 +181,7 @@ class VideoSynchronizer:
                     f'-map "[v]" \\\n')
 
             if 2 <= len(self.differences) <= 4:
-                output_name = re.sub(r"video\d", "stacked", f"{self.files[0]}.mp4")
+                output_name = re.sub(r"video\d_normalized", "stacked", f"{self.files[0]}.mp4")
                 script.write(f'-codec:v libx264 \\\n'
                              f'{output_name}\n')
 
