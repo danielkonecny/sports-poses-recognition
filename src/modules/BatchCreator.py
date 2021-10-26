@@ -2,7 +2,7 @@
 Module for providing training data in batches.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 16. 10. 2021
+Date: 27. 10. 2021
 """
 
 
@@ -14,17 +14,7 @@ import numpy as np
 import cv2
 
 
-def get_movement_index(flow, percentile_thresh=95):
-    up_flow_thresh = np.percentile(flow[:, 0], percentile_thresh)
-    down_flow_thresh = np.percentile(flow[:, 1], percentile_thresh)
-    left_flow_thresh = np.percentile(flow[:, 2], percentile_thresh)
-    right_flow_thresh = np.percentile(flow[:, 3], percentile_thresh)
-    for index in range(len(flow)):
-        if flow[index][0] > up_flow_thresh or \
-                flow[index][1] > down_flow_thresh or \
-                flow[index][2] > left_flow_thresh or \
-                flow[index][3] > right_flow_thresh:
-            yield index
+COMMON_INFO_IDX = 0
 
 
 class BatchCreator:
@@ -50,21 +40,50 @@ class BatchCreator:
             print(f"- File {self.files[index]} with {len(self.flows[index])} flow frames "
                   f"and {self.videos[index].get(cv2.CAP_PROP_FRAME_COUNT)} video frames.")
 
-        self.scene = int(re.sub(r"scene(\d+)_video\d_.*", r"\1", self.files[0]))
+        self.scene = int(re.sub(r"scene(\d+)_video\d_.*", r"\1", self.files[COMMON_INFO_IDX]))
         print(f"- Scene number {self.scene} loaded.")
 
         self.move_thresh = move_thresh
         self.steps = steps
         self.frame_skip = frame_skip
-        self.video_w = int(self.videos[0].get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.video_h = int(self.videos[0].get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.video_w = int(self.videos[COMMON_INFO_IDX].get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.video_h = int(self.videos[COMMON_INFO_IDX].get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    def get_movement_index(self):
+        up_flow_thresh = np.empty((len(self.flows)))
+        down_flow_thresh = np.empty((len(self.flows)))
+        left_flow_thresh = np.empty((len(self.flows)))
+        right_flow_thresh = np.empty((len(self.flows)))
+
+        for flow_idx in range(len(self.flows)):
+            up_flow_thresh[flow_idx] = np.percentile(self.flows[flow_idx][:, 0], self.move_thresh)
+            down_flow_thresh[flow_idx] = np.percentile(self.flows[flow_idx][:, 1], self.move_thresh)
+            left_flow_thresh[flow_idx] = np.percentile(self.flows[flow_idx][:, 2], self.move_thresh)
+            right_flow_thresh[flow_idx] = np.percentile(self.flows[flow_idx][:, 3], self.move_thresh)
+
+        for index in range(len(self.flows[COMMON_INFO_IDX])):
+            if index + self.steps * self.frame_skip > len(self.flows[COMMON_INFO_IDX]):
+                break
+
+            # Requires movement above threshold between all steps for all cameras.
+            enough_movement = True
+            for flow_idx in range(len(self.flows)):
+                for step_idx in range(self.steps - 1):  # Movement in the last step is not needed.
+                    if not (self.flows[flow_idx][index + step_idx * self.frame_skip][0] > up_flow_thresh[flow_idx] or
+                            self.flows[flow_idx][index + step_idx * self.frame_skip][1] > down_flow_thresh[flow_idx] or
+                            self.flows[flow_idx][index + step_idx * self.frame_skip][2] > left_flow_thresh[flow_idx] or
+                            self.flows[flow_idx][index + step_idx * self.frame_skip][3] > right_flow_thresh[flow_idx]):
+                        enough_movement = False
+
+            if enough_movement:
+                yield index
 
     def get_frame(self):
         count = 0
-        movement = get_movement_index(self.flows[1], self.move_thresh)
+        image_channels = 3
 
-        for index in movement:
-            batch = np.empty((self.steps, len(self.videos), self.video_w, self.video_h, 3))
+        for index in self.get_movement_index():
+            batch = np.empty((self.steps, len(self.videos), self.video_w, self.video_h, image_channels))
             frame_index = index
             for step in range(self.steps):
                 for video_index in range(len(self.videos)):
@@ -81,10 +100,9 @@ class BatchCreator:
             count += 1
 
     def create_batches(self):
-        print(f"Exporting batches of images...")
-        image_provider = self.get_frame()
+        print(f"\nExporting batches of images...")
 
-        for count, frames in image_provider:
+        for count, frames in self.get_frame():
             cv2.imwrite(f"{self.directory}/scene{self.scene:03d}_batch{count:05d}.png", frames)
             if count % 100 == 0:
                 print(f"- Batch {count:05d} exported.")
@@ -100,7 +118,7 @@ def main():
     parser.add_argument(
         '-m', '--move_thresh',
         type=int,
-        default=95,
+        default=80,
         help="Threshold for detecting movement in flow between 0 and 100."
     )
     parser.add_argument(
