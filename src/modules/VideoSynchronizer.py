@@ -2,7 +2,7 @@
 Module for synchronization of multiple videos of the same scene.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 14. 10. 2021
+Date: 28. 10. 2021
 """
 
 from argparse import ArgumentParser
@@ -29,16 +29,31 @@ def get_timestamp_from_seconds(seconds):
     return f"{hours:02d}:{minutes:02d}:{int(seconds):02d}.{milliseconds:03d}"
 
 
+def cut_videos(commands):
+    os.system(commands)
+    print("- Videos cut.")
+
+
+def create_script(commands):
+    with open(f'cut_videos.sh', 'w') as script:
+        script.write("# Script automatically created with VideoSynchronizer module.\n")
+        script.write("# Author: Daniel Konecny (xkonec75).\n")
+        script.write(commands)
+
+        print("- Synchronization script created.")
+
+
 class VideoSynchronizer:
     def __init__(self, directory, overlay=1000):
         self.directory = directory
         self.overlay = overlay
         self.files = []
         self.flows = []
-        self.differences = [0]
         self.fps = []
         self.flow1 = 0
         self.flow2 = 1
+        self.differences = [0]
+        self.shortest = 0
 
     def load_flows(self):
         print("Loading flows...")
@@ -140,52 +155,12 @@ class VideoSynchronizer:
             self.differences[i] -= latest
             new_lengths.append(len(self.flows[i]) - self.differences[i])
 
-        shortest = min(new_lengths)
+        self.shortest = min(new_lengths)
 
         for i in range(len(self.differences)):
             start_time = get_timestamp_from_seconds(self.differences[i] / self.fps[i])
-            duration = get_timestamp_from_seconds(shortest / self.fps[i])
+            duration = get_timestamp_from_seconds(self.shortest / self.fps[i])
             print(f"- Cut video {self.directory}/{self.files[i]}.mp4 from {start_time} for (duration) {duration}.")
-
-        return shortest
-
-    def create_script(self, shortest):
-        with open(f'{self.directory}/cut_videos.sh', 'w') as script:
-            script.write("# Script automatically created with VideoSynchronizer module.\n")
-            script.write("# Author: Daniel Konecny (xkonec75).\n")
-            for i in range(len(self.differences)):
-                start_time = get_timestamp_from_seconds(self.differences[i] / self.fps[i])
-                duration = get_timestamp_from_seconds(shortest / self.fps[i])
-
-                script.write(f'\nffmpeg \\\n'
-                             f'-ss {start_time} \\\n'
-                             f'-i {self.files[i]}.mp4 \\\n'
-                             f'-t {duration} \\\n'
-                             f'-codec:v libx264 \\\n'
-                             f'{self.files[i]}_synced.mp4\n')
-
-            if 2 <= len(self.differences) <= 4:
-                script.write(f'\nffmpeg \\\n')
-                for i in range(len(self.differences)):
-                    script.write(f'-i {self.files[i]}_synced.mp4 ')
-                script.write(f'\\\n')
-
-            if len(self.differences) == 2:
-                script.write(f'-filter_complex hstack \\\n')
-            elif len(self.differences) == 3:
-                script.write(f'-filter_complex "[0:v][1:v][2:v]hstack=inputs=3[v]" \\\n'
-                             f'-map "[v]" \\\n')
-            elif len(self.differences) == 4:
-                script.write(
-                    f'-filter_complex "[0:v][1:v][2:v][3:v]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[v]" \\\n'
-                    f'-map "[v]" \\\n')
-
-            if 2 <= len(self.differences) <= 4:
-                output_name = re.sub(r"video\d_normalized", "stacked", f"{self.files[0]}.mp4")
-                script.write(f'-codec:v libx264 \\\n'
-                             f'{output_name}\n')
-
-            print("Synchronization script created.")
 
     def synchronize_videos(self):
         for flow_index in range(1, len(self.flows)):
@@ -200,15 +175,51 @@ class VideoSynchronizer:
             correlation = self.calc_correlation()
             self.calc_difference(correlation)
 
-        shortest = self.calc_cuts()
-        return shortest
+        self.calc_cuts()
 
-    def export_flows(self, shortest):
+    def get_cut_commands(self):
+        print("Preparing commands to cut the videos...")
+        commands = ""
+
+        for i in range(len(self.differences)):
+            start_time = get_timestamp_from_seconds(self.differences[i] / self.fps[i])
+            duration = get_timestamp_from_seconds(self.shortest / self.fps[i])
+
+            commands += f'\nffmpeg \\\n'
+            commands += f'-ss {start_time} \\\n'
+            commands += f'-i {self.directory}/{self.files[i]}.mp4 \\\n'
+            commands += f'-t {duration} \\\n'
+            commands += f'-codec:v libx264 \\\n'
+            commands += f'{self.directory}/{self.files[i]}_synced.mp4\n'
+
+        if 2 <= len(self.differences) <= 4:
+            commands += f'\nffmpeg \\\n'
+            for i in range(len(self.differences)):
+                commands += f'-i {self.directory}/{self.files[i]}_synced.mp4 '
+            commands += f'\\\n'
+
+        if len(self.differences) == 2:
+            commands += f'-filter_complex hstack \\\n'
+        elif len(self.differences) == 3:
+            commands += f'-filter_complex "[0:v][1:v][2:v]hstack=inputs=3[v]" \\\n'
+            commands += f'-map "[v]" \\\n'
+        elif len(self.differences) == 4:
+            commands += f'-filter_complex "[0:v][1:v][2:v][3:v]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[v]" \\\n'
+            commands += f'-map "[v]" \\\n'
+
+        if 2 <= len(self.differences) <= 4:
+            output_name = re.sub(r"video\d_normalized", "stacked", f"{self.files[0]}.mp4")
+            commands += f'-codec:v libx264 \\\n'
+            commands += f'{self.directory}/{output_name}\n'
+
+        return commands
+
+    def export_flows(self):
         print("Exporting synced flows...")
         for index in range(len(self.flows)):
             print(f"- Flow {self.files[index]}_synced.npy exported.")
             np.save(f'{self.directory}/{self.files[index]}_synced.npy',
-                    self.flows[index][self.differences[index]:self.differences[index] + shortest])
+                    self.flows[index][self.differences[index]:self.differences[index] + self.shortest])
 
 
 def main():
@@ -229,6 +240,11 @@ def main():
         action='store_true',
         help="Use when optical flow has already been calculated and can only be loaded."
     )
+    parser.add_argument(
+        '-s', '--script',
+        action='store_true',
+        help="When used, videos are not going to be cut directly via ffmpeg but script doing so is going to be created."
+    )
     args = parser.parse_args()
 
     video_synchronizer = VideoSynchronizer(args.directory, args.overlay)
@@ -238,9 +254,15 @@ def main():
     else:
         video_synchronizer.calculate_flows()
 
-    shortest = video_synchronizer.synchronize_videos()
-    video_synchronizer.create_script(shortest)
-    video_synchronizer.export_flows(shortest)
+    video_synchronizer.synchronize_videos()
+
+    video_synchronizer.export_flows()
+
+    commands = video_synchronizer.get_cut_commands()
+    if args.script:
+        create_script(commands)
+    else:
+        cut_videos(commands)
 
 
 if __name__ == "__main__":
