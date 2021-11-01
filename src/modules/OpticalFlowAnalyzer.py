@@ -2,7 +2,7 @@
 Module for analyzing optical flow data from videos.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 26. 10. 2021
+Date: 01. 11. 2021
 """
 
 
@@ -11,6 +11,16 @@ from argparse import ArgumentParser
 import numpy as np
 from scipy.stats import normaltest
 from matplotlib import pyplot
+
+
+def parse_arguments():
+    parser = ArgumentParser()
+    parser.add_argument(
+        'file',
+        type=str,
+        help="Path to optical flow saved as NumPy nd-array in a file.",
+    )
+    return parser.parse_args()
 
 
 def show_info(flow):
@@ -77,33 +87,44 @@ class OpticalFlowAnalyzer:
         flow = np.load(file)
         self.up_flow = flow[:, 0]
         self.down_flow = flow[:, 1]
-        self.right_flow = flow[:, 2]
-        self.left_flow = flow[:, 3]
+        self.left_flow = flow[:, 2]
+        self.right_flow = flow[:, 3]
 
     def analyze(self):
         print(f"Analyzing optical flow...")
         print(f"- Number of frames: {len(self.up_flow)}")
 
         print(f"\nUpward motion")
-        # plot_flow(self.up_flow)
+        plot_flow(self.up_flow)
         show_info(self.up_flow)
         show_deciles(self.up_flow)
         test_normality(self.up_flow)
         detect_movement(self.up_flow)
 
-        # print(f"\nDownward motion")
-        # print(f"\nLeftward motion")
-        # print(f"\nRightward motion")
+        print(f"\nDownward motion")
+        plot_flow(self.down_flow)
+        show_info(self.down_flow)
+        show_deciles(self.down_flow)
+        test_normality(self.down_flow)
+        detect_movement(self.down_flow)
+
+        print(f"\nLeftward motion")
+        plot_flow(self.left_flow)
+        show_info(self.left_flow)
+        show_deciles(self.left_flow)
+        test_normality(self.left_flow)
+        detect_movement(self.left_flow)
+
+        print(f"\nRightward motion")
+        plot_flow(self.right_flow)
+        show_info(self.right_flow)
+        show_deciles(self.right_flow)
+        test_normality(self.right_flow)
+        detect_movement(self.right_flow)
 
 
 def main():
-    parser = ArgumentParser()
-    parser.add_argument(
-        'file',
-        type=str,
-        help="Path to optical flow saved as NumPy nd-array in a file.",
-    )
-    args = parser.parse_args()
+    args = parse_arguments()
 
     batch_provider = OpticalFlowAnalyzer(args.file)
     batch_provider.analyze()

@@ -3,6 +3,8 @@ Module for synchronization of multiple videos of the same scene.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
 Date: 28. 10. 2021
+Source: ffmpeg commands
+    (https://stackoverflow.com/questions/11552565/vertically-or-horizontally-stack-mosaic-several-videos-using-ffmpeg)
 """
 
 from argparse import ArgumentParser
@@ -14,6 +16,32 @@ from scipy.stats import pearsonr
 import cv2
 
 import OpticalFlowCalculator
+
+
+def parse_arguments():
+    parser = ArgumentParser()
+    parser.add_argument(
+        'directory',
+        type=str,
+        help="Path to the directory with videos (without slash at the end).",
+    )
+    parser.add_argument(
+        '-o', '--overlay',
+        type=int,
+        default=1000,
+        help="Number of frames that have to overlay."
+    )
+    parser.add_argument(
+        '-l', '--load',
+        action='store_true',
+        help="Use when optical flow has already been calculated and can only be loaded."
+    )
+    parser.add_argument(
+        '-s', '--script',
+        action='store_true',
+        help="When used, videos are not going to be cut directly via ffmpeg but script doing so is going to be created."
+    )
+    return parser.parse_args()
 
 
 def get_timestamp_from_seconds(seconds):
@@ -178,6 +206,27 @@ class VideoSynchronizer:
         self.calc_cuts()
 
     def get_cut_commands(self):
+        """
+        ffmpeg command to cut videos:
+            ffmpeg
+            -ss hh:mm:ss.mmm (start time)
+            -i input_file
+            -t hh:mm:ss.mmm (duration)
+            -codec:v libx264
+            output_file
+
+        ffmpeg command to stack videos:
+            ffmpeg
+            -i input_file
+            -filter_complex hstack (2 videos)
+            -filter_complex "[0:v][1:v][2:v]hstack=inputs=3[v]" -map "[v]" (3 videos)
+            -filter_complex "[0:v][1:v][2:v][3:v]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[v]" -map "[v]" (4 videos)
+            -codec:v libx264
+            output_file
+
+        :return: String with constructed ffmpeg command to synchronize and stack the videos.
+        """
+
         print("Preparing commands to cut the videos...")
         commands = ""
 
@@ -223,29 +272,7 @@ class VideoSynchronizer:
 
 
 def main():
-    parser = ArgumentParser()
-    parser.add_argument(
-        'directory',
-        type=str,
-        help="Path to the directory with videos (without slash at the end).",
-    )
-    parser.add_argument(
-        '-o', '--overlay',
-        type=int,
-        default=1000,
-        help="Number of frames that have to overlay."
-    )
-    parser.add_argument(
-        '-l', '--load',
-        action='store_true',
-        help="Use when optical flow has already been calculated and can only be loaded."
-    )
-    parser.add_argument(
-        '-s', '--script',
-        action='store_true',
-        help="When used, videos are not going to be cut directly via ffmpeg but script doing so is going to be created."
-    )
-    args = parser.parse_args()
+    args = parse_arguments()
 
     video_synchronizer = VideoSynchronizer(args.directory, args.overlay)
 
@@ -255,7 +282,6 @@ def main():
         video_synchronizer.calculate_flows()
 
     video_synchronizer.synchronize_videos()
-
     video_synchronizer.export_flows()
 
     commands = video_synchronizer.get_cut_commands()

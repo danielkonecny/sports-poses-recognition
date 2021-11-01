@@ -21,6 +21,51 @@ with contextlib.redirect_stdout(None):
 COMPUTATIONAL_PRECISION = 1e6
 
 
+def parse_arguments():
+    parser = ArgumentParser()
+    parser.add_argument(
+        'video',
+        type=str,
+        help="Path to the video to be cropped.",
+    )
+    parser.add_argument(
+        '-S', '--scene_num',
+        type=int,
+        default=0,
+        help="Number of this dataset scene.",
+    )
+    parser.add_argument(
+        '-V', '--video_num',
+        type=int,
+        default=0,
+        help="Number of this video in a scene.",
+    )
+    parser.add_argument(
+        '-W', '--width',
+        type=int,
+        default=224,
+        help="Width of the resulting video.",
+    )
+    parser.add_argument(
+        '-H', '--height',
+        type=int,
+        default=224,
+        help="height of the resulting video.",
+    )
+    parser.add_argument(
+        '-F', '--framerate',
+        type=int,
+        default=20,
+        help="height of the resulting video.",
+    )
+    parser.add_argument(
+        '-s', '--script',
+        action='store_true',
+        help="When used, videos are not going to be cropped directly but script doing so is going to be created."
+    )
+    return parser.parse_args()
+
+
 def crop_video(crop_command):
     os.system(crop_command)
     print("- Video cropped.")
@@ -283,54 +328,13 @@ class VideoCropper:
         return crop_command
 
 
-if __name__ == "__main__":
-    parser = ArgumentParser()
-    parser.add_argument(
-        'video',
-        type=str,
-        help="Path to the video to be cropped.",
-    )
-    parser.add_argument(
-        '-S', '--scene_num',
-        type=int,
-        default=0,
-        help="Number of this dataset scene.",
-    )
-    parser.add_argument(
-        '-V', '--video_num',
-        type=int,
-        default=0,
-        help="Number of this video in a scene.",
-    )
-    parser.add_argument(
-        '-W', '--width',
-        type=int,
-        default=224,
-        help="Width of the resulting video.",
-    )
-    parser.add_argument(
-        '-H', '--height',
-        type=int,
-        default=224,
-        help="height of the resulting video.",
-    )
-    parser.add_argument(
-        '-F', '--framerate',
-        type=int,
-        default=20,
-        help="height of the resulting video.",
-    )
-    parser.add_argument(
-        '-s', '--script',
-        action='store_true',
-        help="When used, videos are not going to be cropped directly but script doing so is going to be created."
-    )
-    args = parser.parse_args()
+def main():
+    args = parse_arguments()
 
     pygame.init()
 
     video_cropper = VideoCropper(args.video, args.framerate, args.width, args.height, args.scene_num, args.video_num)
-    image = video_cropper.get_image()
+    _ = video_cropper.get_image()
     video_cropper.set_crops()
 
     pygame.display.quit()
@@ -341,3 +345,7 @@ if __name__ == "__main__":
         create_script(command)
     else:
         crop_video(command)
+
+
+if __name__ == "__main__":
+    main()

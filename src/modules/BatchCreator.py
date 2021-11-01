@@ -2,7 +2,7 @@
 Module for providing training data in batches.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 27. 10. 2021
+Date: 01. 11. 2021
 """
 
 
@@ -15,6 +15,34 @@ import cv2
 
 
 COMMON_INFO_IDX = 0
+
+
+def parse_arguments():
+    parser = ArgumentParser()
+    parser.add_argument(
+        'directory',
+        type=str,
+        help="Path to the directory with videos and flows (without slash at the end).",
+    )
+    parser.add_argument(
+        '-m', '--move_thresh',
+        type=int,
+        default=80,
+        help="Threshold for detecting movement in flow between 0 and 100."
+    )
+    parser.add_argument(
+        '-s', '--steps',
+        type=int,
+        default=3,
+        help="Number of steps in video used."
+    )
+    parser.add_argument(
+        '-f', '--frame_skip',
+        type=int,
+        default=7,
+        help="Number of frames in between optical flow is calculated."
+    )
+    return parser.parse_args()
 
 
 class BatchCreator:
@@ -109,31 +137,7 @@ class BatchCreator:
 
 
 def main():
-    parser = ArgumentParser()
-    parser.add_argument(
-        'directory',
-        type=str,
-        help="Path to the directory with videos and flows (without slash at the end).",
-    )
-    parser.add_argument(
-        '-m', '--move_thresh',
-        type=int,
-        default=80,
-        help="Threshold for detecting movement in flow between 0 and 100."
-    )
-    parser.add_argument(
-        '-s', '--steps',
-        type=int,
-        default=3,
-        help="Number of steps in video used."
-    )
-    parser.add_argument(
-        '-f', '--frame_skip',
-        type=int,
-        default=7,
-        help="Number of frames in between optical flow is calculated."
-    )
-    args = parser.parse_args()
+    args = parse_arguments()
 
     batch_creator = BatchCreator(args.directory, args.move_thresh, args.steps, args.frame_skip)
     batch_creator.create_batches()
