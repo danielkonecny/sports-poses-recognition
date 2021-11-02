@@ -4,7 +4,7 @@
 # Script for easy converting of multiple videos to format suitable for training dataset.
 # Organisation: Brno University of Technology - Faculty of Information Technology
 # Author: Daniel Konecny (xkonec75)
-# Date: 14. 10. 2021
+# Date: 02. 11. 2021
 
 # Input Video Information
 in_w=1920
@@ -19,6 +19,11 @@ crop_w=1080
 crop_h=1080
 crop_start_w=$in_w/2-$crop_w/2
 crop_start_h=$in_h/2-$crop_h/2
+# Multiples of 224 - 448, 672, 896
+#crop_w=896
+#crop_h=896
+#crop_start_w=$in_w/2-$crop_w/2-50
+#crop_start_h=$in_h/2-$crop_h/2
 
 # Scale Settings - -1 for keeping the same ratio
 scale_w=224
@@ -26,10 +31,6 @@ scale_h=-1
 
 # Framerate Settings
 fps=20
-
-# Audio handling
-# -an - removes audio
-# -codec:a copy - copies audio
 
 for file in "$in_dir"*.*;
 do
@@ -43,13 +44,15 @@ do
         "$out_dir""$out_file"_normalized."$out_suffix"
 done
 
-# OTHER USEFUL FFMPEG COMMANDS
 
+# FFMPEG COMMANDS - OVERALL
 # Lossless conversion of MTS to MP4
-# ffmpeg -i input.MTS -c:v copy -c:a aac -strict experimental -b:a 128k output.mp4
+# (add "-strict experimental" after "aac" if crashing)
+# (add "-b:a 128k" to set the audio bitrate)
+# ffmpeg -i input.MTS -c:v copy -c:a aac output.mp4
 
 # Concatenation of file not supporting file-level concatenation (MP4)
-# touch videos.txt
+# Create file "videos.txt"
 # insert word "file" + path to video file
     #file '/path/to/file1'
     #file '/path/to/file2'
@@ -71,3 +74,25 @@ done
 # ffmpeg -i input0.mp4 -i input1.mp4 -i input2.mp4 -i input3.mp4 -filter_complex "[0:v][1:v][2:v][3:v]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[v]" -map "[v]" -c:v libx264 -crf 0 output.mp4
 # - Other options:
 # https://stackoverflow.com/questions/11552565/vertically-or-horizontally-stack-mosaic-several-videos-using-ffmpeg
+
+
+# FFMPEG COMMANDS - VIDEO (FILTERS)
+# Crop video
+# ffmpeg -i input.mp4 -filter:v "crop=width:height:width_start:height_start" output.mp4
+
+# Scale video
+# ffmpeg -i input.mp4 -filter:v "scale=width:height" output.mp4
+
+# Change framerate of video
+# ffmpeg -i input.mp4 -filter:v "fps=25" output.mp4
+
+# Use multiple filters at once
+# ffmpeg ... -filter:v "filter1=value11:value12, filter2=value2, filter3=value3" ...
+
+
+# FFMPEG COMMANDS - AUDIO
+# Remove audio
+# ffmpeg -i input.mp4 -an output.mp4
+
+# Copy audio
+# ffmpeg -i input.mp4 -codec:a copy output.mp4
