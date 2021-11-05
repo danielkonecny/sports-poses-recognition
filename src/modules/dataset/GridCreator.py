@@ -1,5 +1,5 @@
 """Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
-Module for providing training data in batches.
+Module for providing training data in grids.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
 Date: 01. 11. 2021
@@ -45,7 +45,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
-class BatchCreator:
+class GridCreator:
     def __init__(self, directory, move_thresh, steps, frame_skip):
         print(f"Loading input files...")
         self.directory = directory
@@ -111,7 +111,7 @@ class BatchCreator:
         image_channels = 3
 
         for index in self.get_movement_index():
-            batch = np.empty((self.steps, len(self.videos), self.video_w, self.video_h, image_channels))
+            grid = np.empty((self.steps, len(self.videos), self.video_w, self.video_h, image_channels))
             frame_index = index
             for step in range(self.steps):
                 for video_index in range(len(self.videos)):
@@ -120,27 +120,27 @@ class BatchCreator:
                     if not ret:
                         print(f"- Frame {frame_index:05d} from flow does not exist.")
 
-                    batch[step][video_index] = frame
+                    grid[step][video_index] = frame
 
                 frame_index += self.frame_skip
 
-            yield count, np.hstack(np.hstack(batch))
+            yield count, np.hstack(np.hstack(grid))
             count += 1
 
-    def create_batches(self):
-        print(f"\nExporting batches of images...")
+    def create_grids(self):
+        print(f"\nExporting grids of images...")
 
         for count, frames in self.get_frame():
-            cv2.imwrite(f"{self.directory}/scene{self.scene:03d}_batch{count:05d}.png", frames)
+            cv2.imwrite(f"{self.directory}/scene{self.scene:03d}_grid{count:05d}.png", frames)
             if count % 100 == 0:
-                print(f"- Batch {count:05d} exported.")
+                print(f"- Grid {count:05d} exported.")
 
 
 def main():
     args = parse_arguments()
 
-    batch_creator = BatchCreator(args.directory, args.move_thresh, args.steps, args.frame_skip)
-    batch_creator.create_batches()
+    grid_creator = GridCreator(args.directory, args.move_thresh, args.steps, args.frame_skip)
+    grid_creator.create_grids()
 
 
 if __name__ == "__main__":
