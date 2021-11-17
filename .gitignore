@@ -1,5 +1,6 @@
 # Project ignores
 out/
+notes.txt
 
 # JetBrains ignores
 .idea/
