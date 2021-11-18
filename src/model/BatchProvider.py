@@ -70,7 +70,7 @@ class BatchProvider:
         if self.verbose:
             print("Batch Provider (BP) initialized.")
 
-    def load_file_names(self, shuffle=False):
+    def load_file_names(self, shuffle=True):
         if self.verbose:
             print("BP - Loading and shuffling of file names...")
 
@@ -135,45 +135,70 @@ class BatchProvider:
 
             yield [anchor, positive, negative]
 
-    def batch_converter(self, grid_batch_size=128):
-        if self.verbose:
-            print("BP - Converting batches to NumPy nd-array for faster loading...")
-
+    def grids_to_batch(self, grid_batch, group, batch_index, grid_batch_size):
         triplet_size = 3
         permutations = 3
 
+        batch = np.empty(
+            (permutations * len(grid_batch), triplet_size, self.height, self.width, self.image_channels)
+        )
+
+        index = 0
+        for grid in grid_batch:
+            for triplet in self.triplet_generator(grid):
+                batch[index] = triplet
+                index += 1
+
+        np.save(
+            f'{self.directory}/batches/{grid_batch_size:03d}/{group}/scene004_{group}_batch{batch_index:05d}.npy',
+            batch
+        )
+        if self.verbose:
+            print(f"BP -- scene004_{group}_batch{batch_index:05d}.npy with shape {batch.shape} saved.")
+
+    def batch_converter(self, grid_batch_size=128, train_percentage=0.8):
+        if self.verbose:
+            print("BP - Converting batches to NumPy nd-array for faster loading...")
+
         self.load_file_names()
 
-        Path(f'{self.directory}/batches/{grid_batch_size:03d}').mkdir(parents=True, exist_ok=True)
+        Path(f'{self.directory}/batches/{grid_batch_size:03d}/train').mkdir(parents=True, exist_ok=True)
+        Path(f'{self.directory}/batches/{grid_batch_size:03d}/val').mkdir(parents=True, exist_ok=True)
 
         batch_index = 0
         for grid_batch in self.grid_batch_generator(grid_batch_size):
-            batch = np.empty(
-                (permutations * len(grid_batch), triplet_size, self.height, self.width, self.image_channels)
-            )
-            index = 0
-            for grid in grid_batch:
-                for triplet in self.triplet_generator(grid):
-                    batch[index] = triplet
-                    index += 1
-            np.save(f'{self.directory}/batches/{grid_batch_size:03d}/scene004_batch{batch_index:05d}.npy', batch)
-            if self.verbose:
-                print(f"BP -- scene004_batch{batch_index:05d}.npy saved.")
+            if (batch_index + 1) * grid_batch_size <= train_percentage * self.size:
+                self.grids_to_batch(grid_batch, "train", batch_index, grid_batch_size)
+
+            elif batch_index * grid_batch_size <= train_percentage * self.size:
+                batch_end = int(train_percentage * self.size - batch_index * grid_batch_size)
+                if batch_end != 0:
+                    self.grids_to_batch(grid_batch[:batch_end], "train", batch_index, grid_batch_size)
+
+                batch_start = batch_end
+                self.grids_to_batch(grid_batch[batch_start:], "val", batch_index, grid_batch_size)
+
+            elif (batch_index + 1) * grid_batch_size > train_percentage * self.size:
+                self.grids_to_batch(grid_batch, "val", batch_index, grid_batch_size)
+
+            else:
+                print("BP -- Should not happen, seek why if you see this.")
+
             batch_index += 1
 
-    def batch_generator(self, grid_batch_size=128):
+    def batch_generator(self, group, grid_batch_size=128):
         if not os.path.isdir(f'{self.directory}/batches/{grid_batch_size:03d}'):
             self.batch_converter(grid_batch_size)
 
         batch_names = []
 
-        for file_name in os.listdir(f'{self.directory}/batches/{grid_batch_size:03d}'):
+        for file_name in os.listdir(f'{self.directory}/batches/{grid_batch_size:03d}/{group}'):
             if file_name.endswith('.npy'):
                 batch_names.append(file_name)
         batch_names = sorted(batch_names)
 
         for batch_name in batch_names:
-            batch = np.load(f'{self.directory}/batches/{grid_batch_size:03d}/{batch_name}')
+            batch = np.load(f'{self.directory}/batches/{grid_batch_size:03d}/{group}/{batch_name}')
             np.random.shuffle(batch)
             yield batch
 
@@ -191,7 +216,7 @@ def test():
     )
 
     counter = 0
-    for batch in batch_provider.batch_generator(128):
+    for batch in batch_provider.batch_generator("val", 1):
         print(f"{counter}. batch of shape {batch.shape} has size of {batch.nbytes / 1024 / 1024:.2f} MB.")
         for anchor, positive, negative in batch:
             cv2.imshow('Anchor Image', anchor)

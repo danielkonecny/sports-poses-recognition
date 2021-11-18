@@ -140,7 +140,7 @@ class Encoder:
     def train(self, batch_provider, batch_size=128, epochs=10):
         for epoch in range(epochs):
             print(f"En - Epoch {epoch}.")
-            for batch in batch_provider.batch_generator(batch_size):
+            for batch in batch_provider.batch_generator("train", batch_size):
                 for anchor, positive, negative in batch:
                     self.step(anchor, positive, negative)
 
