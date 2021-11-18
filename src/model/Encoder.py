@@ -2,7 +2,7 @@
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 16. 11. 2021
+Date: 18. 11. 2021
 Source: https://towardsdatascience.com/custom-loss-function-in-tensorflow-2-0-d8fa35405e4e
 """
 
@@ -58,27 +58,31 @@ def parse_arguments():
         default=128,
         help="Number of triplets in a batch."
     )
+    parser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help="Use to turn on additional text output about what is happening."
+    )
     return parser.parse_args()
-
-
-def cosine_loss(vector1, vector2, is_positive=True):
-    distance = tf.keras.losses.cosine_similarity(vector1, vector2)
-    if is_positive:
-        loss = distance
-    else:
-        loss = -distance
-    return loss
 
 
 def triplet_loss(anchor, positive, negative, margin=0.01):
     d_pos = tf.reduce_sum(tf.square(anchor - positive), 1)
     d_neg = tf.reduce_sum(tf.square(anchor - negative), 1)
     loss = tf.maximum(0.0, margin + d_pos - d_neg)
-    return tf.reduce_mean(loss)
+
+    if d_pos < d_neg:
+        accuracy = 1
+    else:
+        accuracy = 0
+
+    return tf.reduce_mean(loss), accuracy
 
 
 class Encoder:
-    def __init__(self):
+    def __init__(self, verbose):
+        self.verbose = verbose
+
         self.input_height = 224
         self.input_width = 224
         self.input_channels = 3
@@ -117,10 +121,9 @@ class Encoder:
             anchor_encoded = self.model(tf.expand_dims(anchor, axis=0))
             positive_encoded = self.model(tf.expand_dims(positive, axis=0))
             negative_encoded = self.model(tf.expand_dims(negative, axis=0))
-            # loss = cosine_loss(anchor_encoded, positive_encoded, True) \
-            #     + cosine_loss(anchor_encoded, negative_encoded, False)
-            loss = triplet_loss(anchor_encoded, positive_encoded, negative_encoded)
-            print(f"- Loss: {loss}")
+            loss, accuracy = triplet_loss(anchor_encoded, positive_encoded, negative_encoded)
+            if self.verbose:
+                print(f"En --- Loss: {loss:.6f}, Accuracy: {accuracy * 100:6.2f} %")
 
         gradient = tape.gradient(
             loss,
@@ -137,38 +140,52 @@ class Encoder:
         ))
 
     @timer
-    def train(self, batch_provider, batch_size=128, epochs=10):
+    def fit(self, batch_provider, batch_size=128, epochs=10):
+        if self.verbose:
+            print("En - Fitting the model on the training dataset...")
+
         for epoch in range(epochs):
-            print(f"En - Epoch {epoch}.")
+            if self.verbose:
+                print(f"En -- Epoch {epoch:03d}.")
+
             for batch in batch_provider.batch_generator("train", batch_size):
                 for anchor, positive, negative in batch:
                     self.step(anchor, positive, negative)
 
-    def inference(self, batch_provider):
-        print("Evaluating on new samples.")
-        for batch in batch_provider.batch_generator(1):
-            anchor, positive, negative = batch[0]
-            out_a = self.model(tf.expand_dims(anchor, axis=0))
-            out_p = self.model(tf.expand_dims(positive, axis=0))
-            out_n = self.model(tf.expand_dims(negative, axis=0))
+    @timer
+    def evaluate(self, batch_provider, batch_size=128):
+        if self.verbose:
+            print("En - Evaluating the model on the validation dataset...")
+        loss_sum = accuracy_sum = runs = 0
 
-            print(f"A-P distance: {cosine_loss(out_a, out_p)}")
-            print(f"A-N distance: {cosine_loss(out_a, out_n)}")
-            print(f"Triplet loss: {triplet_loss(out_a, out_p, out_n)}")
+        for batch in batch_provider.batch_generator("val", batch_size):
+            for anchor, positive, negative in batch:
+                anchor_encoded = self.model(tf.expand_dims(anchor, axis=0))
+                positive_encoded = self.model(tf.expand_dims(positive, axis=0))
+                negative_encoded = self.model(tf.expand_dims(negative, axis=0))
+                loss, accuracy = triplet_loss(anchor_encoded, positive_encoded, negative_encoded)
+                runs += 1
+                loss_sum += loss
+                accuracy_sum += accuracy
 
-            break
+                if self.verbose:
+                    print(f"En -- Loss: {loss:.6f}, Accuracy: {accuracy * 100:6.2f} %")
+
+        return loss_sum / runs, accuracy_sum / runs
 
 
 def main():
     args = parse_arguments()
-
     batch_provider = BatchProvider(args.directory, args.cameras, args.steps, args.width, args.height)
-
-    encoder = Encoder()
-
+    encoder = Encoder(args.verbose)
     encoder.create_model()
-    encoder.train(batch_provider, args.batch_size, args.epochs)
-    encoder.inference(batch_provider)
+
+    encoder.fit(batch_provider, args.batch_size, args.epochs)
+
+    loss, accuracy = encoder.evaluate(batch_provider)
+    print("En - Overall model evaluation")
+    print(f"En -- Loss: {loss:.6f}")
+    print(f"En -- Accuracy: {accuracy * 100:6.2f} %")
 
 
 if __name__ == "__main__":
