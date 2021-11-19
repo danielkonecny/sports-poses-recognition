@@ -4,10 +4,10 @@
 # Install script for Python environment.
 # Organisation: Brno University of Technology - Faculty of Information Technology
 # Author: Daniel Konecny (xkonec75)
-# Date: 06. 10. 2021
+# Date: 19. 11. 2021
 
-PYTHON="python3.9"
-VENV="../dip-env"
+PYTHON="python3"
+VENV=".env"
 
 test -d $VENV || $PYTHON -m venv $VENV
 source "$VENV/bin/activate"
