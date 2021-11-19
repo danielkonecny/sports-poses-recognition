@@ -3,16 +3,15 @@ Module for training of encoder model - encodes an image to a latent vector repre
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
 Date: 18. 11. 2021
-Source: https://towardsdatascience.com/custom-loss-function-in-tensorflow-2-0-d8fa35405e4e
 """
 
 from argparse import ArgumentParser
+import time
 
 import tensorflow as tf
 from tensorflow.keras import layers
 
 from src.model.BatchProvider import BatchProvider
-from src.utils.timer import timer
 
 
 def parse_arguments():
@@ -115,47 +114,54 @@ class Encoder:
 
         self.optimizer = tf.keras.optimizers.Adam()
 
-    def get_gradient(self, anchor, positive, negative):
+    def step(self, anchor, positive, negative):
+        trained_layers = [
+            self.model.get_layer(name='trained').variables[0],
+            self.model.get_layer(name='trained').variables[1]
+        ]
+
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(self.model.get_layer(name='trained').variables)
+
             anchor_encoded = self.model(tf.expand_dims(anchor, axis=0))
             positive_encoded = self.model(tf.expand_dims(positive, axis=0))
             negative_encoded = self.model(tf.expand_dims(negative, axis=0))
+
             loss, accuracy = triplet_loss(anchor_encoded, positive_encoded, negative_encoded)
-            if self.verbose:
-                print(f"En --- Loss: {loss:.6f}, Accuracy: {accuracy * 100:6.2f} %")
 
-        gradient = tape.gradient(
-            loss,
-            [self.model.get_layer(name='trained').variables[0], self.model.get_layer(name='trained').variables[1]]
-        )
-        # print([var.name for var in tape.watched_variables()])
-        return gradient
+        gradient = tape.gradient(loss, trained_layers)
+        self.optimizer.apply_gradients(zip(gradient, trained_layers))
 
-    def step(self, anchor, positive, negative):
-        gradient = self.get_gradient(anchor, positive, negative)
-        self.optimizer.apply_gradients(zip(
-            gradient,
-            [self.model.get_layer(name='trained').variables[0], self.model.get_layer(name='trained').variables[1]]
-        ))
+        return loss, accuracy
 
-    @timer
     def fit(self, batch_provider, batch_size=128, epochs=10):
         if self.verbose:
             print("En - Fitting the model on the training dataset...")
 
         for epoch in range(epochs):
             if self.verbose:
-                print(f"En -- Epoch {epoch:03d}.")
+                print(f"En -- Epoch {epoch:03d} started.")
 
+            loss_sum = accuracy_sum = runs = 0
+
+            start_time = time.perf_counter()
             for batch in batch_provider.batch_generator("train", batch_size):
                 for anchor, positive, negative in batch:
-                    self.step(anchor, positive, negative)
+                    loss, accuracy = self.step(anchor, positive, negative)
 
-    @timer
+                    runs += 1
+                    loss_sum += loss
+                    accuracy_sum += accuracy
+            end_time = time.perf_counter()
+
+            if self.verbose:
+                print(f"En -- Epoch {epoch:03d} finished after {end_time - start_time:.4f} s"
+                      f" - loss={loss_sum / runs:.6f}, accuracy={(accuracy_sum / runs) * 100:6.2f} %.")
+
     def evaluate(self, batch_provider, batch_size=128):
         if self.verbose:
             print("En - Evaluating the model on the validation dataset...")
+
         loss_sum = accuracy_sum = runs = 0
 
         for batch in batch_provider.batch_generator("val", batch_size):
@@ -163,13 +169,12 @@ class Encoder:
                 anchor_encoded = self.model(tf.expand_dims(anchor, axis=0))
                 positive_encoded = self.model(tf.expand_dims(positive, axis=0))
                 negative_encoded = self.model(tf.expand_dims(negative, axis=0))
+
                 loss, accuracy = triplet_loss(anchor_encoded, positive_encoded, negative_encoded)
+
                 runs += 1
                 loss_sum += loss
                 accuracy_sum += accuracy
-
-                if self.verbose:
-                    print(f"En -- Loss: {loss:.6f}, Accuracy: {accuracy * 100:6.2f} %")
 
         return loss_sum / runs, accuracy_sum / runs
 
@@ -185,7 +190,7 @@ def main():
     loss, accuracy = encoder.evaluate(batch_provider)
     print("En - Overall model evaluation")
     print(f"En -- Loss: {loss:.6f}")
-    print(f"En -- Accuracy: {accuracy * 100:6.2f} %")
+    print(f"En -- Accuracy: {accuracy * 100:.2f} %")
 
 
 if __name__ == "__main__":
