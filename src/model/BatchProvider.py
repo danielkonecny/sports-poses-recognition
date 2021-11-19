@@ -2,10 +2,9 @@
 Module for loading training data and rearranging them for specific training purposes.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 16. 11. 2021
+Date: 18. 11. 2021
 """
 
-import os
 from pathlib import Path
 from argparse import ArgumentParser
 import random
@@ -55,12 +54,12 @@ def parse_arguments():
 
 class BatchProvider:
     def __init__(self, directory, cameras, steps, width, height, verbose=False):
-        self.directory = directory
+        self.directory = Path(directory)
         self.width = width
         self.height = height
         self.cameras = cameras
         self.steps = steps
-        self.file_names = []
+        self.file_paths = []
         self.files = None
         self.size = 0
         self.image_channels = 3
@@ -74,15 +73,13 @@ class BatchProvider:
         if self.verbose:
             print("BP - Loading and shuffling of file names...")
 
-        for file_name in os.listdir(f"{self.directory}/grids"):
-            if file_name.endswith('.png'):
-                self.file_names.append(file_name)
-        self.size = len(self.file_names)
+        self.file_paths = list((self.directory / 'grids').glob('*.png'))
+        self.size = len(self.file_paths)
 
         if shuffle:
-            random.shuffle(self.file_names)
+            random.shuffle(self.file_paths)
         else:
-            self.file_names = sorted(self.file_names)
+            self.file_paths = sorted(self.file_paths)
 
     def load_files(self):
         """
@@ -95,7 +92,7 @@ class BatchProvider:
         self.files = np.empty((self.size, self.steps * self.height, self.cameras * self.width, self.image_channels))
 
         for index in range(self.size):
-            self.files[index] = cv2.imread(f'{self.directory}/grids/{self.file_names[index]}') / 255.
+            self.files[index] = cv2.imread(str(self.file_paths[index])) / 255.
 
         if self.verbose:
             print(f"BP - Grid files loaded with size {self.files.nbytes / 1024 / 1024} MB.")
@@ -110,11 +107,12 @@ class BatchProvider:
             )
 
             for j in range(grid_batch_size):
-                grid_batch[j] = cv2.imread(f'{self.directory}/grids/{self.file_names[index + j]}') / 255.
+                grid_batch[j] = cv2.imread(str(self.file_paths[index + j])) / 255.
 
             if self.verbose:
                 print("BP - New batch of grids loaded.")
 
+            np.random.shuffle(grid_batch)
             yield grid_batch
 
     def triplet_generator(self, grid):
@@ -150,7 +148,7 @@ class BatchProvider:
                 index += 1
 
         np.save(
-            f'{self.directory}/batches/{grid_batch_size:03d}/{group}/scene004_{group}_batch{batch_index:05d}.npy',
+            self.directory / f'batches/{grid_batch_size:03d}/{group}/scene004_{group}_batch{batch_index:05d}.npy',
             batch
         )
         if self.verbose:
@@ -162,8 +160,8 @@ class BatchProvider:
 
         self.load_file_names()
 
-        Path(f'{self.directory}/batches/{grid_batch_size:03d}/train').mkdir(parents=True, exist_ok=True)
-        Path(f'{self.directory}/batches/{grid_batch_size:03d}/val').mkdir(parents=True, exist_ok=True)
+        Path(self.directory / f'batches/{grid_batch_size:03d}/train').mkdir(parents=True, exist_ok=True)
+        Path(self.directory / f'batches/{grid_batch_size:03d}/val').mkdir(parents=True, exist_ok=True)
 
         batch_index = 0
         for grid_batch in self.grid_batch_generator(grid_batch_size):
@@ -187,18 +185,11 @@ class BatchProvider:
             batch_index += 1
 
     def batch_generator(self, group, grid_batch_size=128):
-        if not os.path.isdir(f'{self.directory}/batches/{grid_batch_size:03d}'):
+        if not Path(self.directory / f'batches/{grid_batch_size:03d}').is_dir():
             self.batch_converter(grid_batch_size)
 
-        batch_names = []
-
-        for file_name in os.listdir(f'{self.directory}/batches/{grid_batch_size:03d}/{group}'):
-            if file_name.endswith('.npy'):
-                batch_names.append(file_name)
-        batch_names = sorted(batch_names)
-
-        for batch_name in batch_names:
-            batch = np.load(f'{self.directory}/batches/{grid_batch_size:03d}/{group}/{batch_name}')
+        for batch_name in Path(self.directory / f'batches/{grid_batch_size:03d}/{group}').glob('*.npy'):
+            batch = np.load(batch_name)
             np.random.shuffle(batch)
             yield batch
 
@@ -215,8 +206,10 @@ def test():
         verbose=args.verbose
     )
 
+    batch_size = 1
+
     counter = 0
-    for batch in batch_provider.batch_generator("val", 1):
+    for batch in batch_provider.batch_generator("val", batch_size):
         print(f"{counter}. batch of shape {batch.shape} has size of {batch.nbytes / 1024 / 1024:.2f} MB.")
         for anchor, positive, negative in batch:
             cv2.imshow('Anchor Image', anchor)
