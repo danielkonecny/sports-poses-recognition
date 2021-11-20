@@ -2,15 +2,19 @@
 Module for loading training data and rearranging them for specific training purposes.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 18. 11. 2021
+Date: 20. 11. 2021
+Source: https://stackoverflow.com/questions/42297115/numpy-split-cube-into-cubes/42298440#42298440 (cubify function)
 """
 
 from pathlib import Path
 from argparse import ArgumentParser
 import random
+import contextlib
 
+import tensorflow as tf
 import numpy as np
 import cv2
+import matplotlib.pyplot as plt
 
 
 def parse_arguments():
@@ -50,6 +54,40 @@ def parse_arguments():
         help="Use to turn on additional text output about what is happening."
     )
     return parser.parse_args()
+
+
+def cubify(image_grid, new_shape=(224, 224, 3)):
+    old_shape = np.array(image_grid.shape)
+    repeats = (old_shape / new_shape).astype(int)
+    tmp_shape = np.column_stack([repeats, new_shape]).ravel()
+    order = np.arange(len(tmp_shape))
+    order = np.concatenate([order[::2], order[1::2]])
+    # new_shape must divide old_shape evenly or else ValueError will be raised
+    return image_grid.reshape(tmp_shape).transpose(order).reshape(-1, *new_shape)
+
+
+def cubify2(image_grid, new_shape=(224, 224, 3)):
+    height = new_shape[0]
+    width = new_shape[1]
+    channels = new_shape[2]
+    steps = image_grid.shape[0] // height
+    cameras = image_grid.shape[1] // width
+
+    reshaped = np.empty((steps, cameras, height, width, channels))
+    for i in range(cameras):
+        for j in range(steps):
+            reshaped[i][j] = image_grid[i * height:(i + 1) * height, j * width:(j + 1) * width, :]
+
+    return tf.reshape(reshaped, (steps * cameras, height, width, channels))
+
+
+def triplets_in_grid(grid_shape=(3, 3)):
+    steps = grid_shape[0]
+    cameras = grid_shape[1]
+
+    # TODO - Use np.meshgrid to create all combinations.
+
+    pass
 
 
 class BatchProvider:
@@ -193,6 +231,32 @@ class BatchProvider:
             np.random.shuffle(batch)
             yield batch
 
+    def get_dataset_generator(self, batch_size=128, val_split=0.2):
+        random_seed = tf.random.uniform(shape=(), minval=1, maxval=2**32, dtype=tf.int64)
+
+        with contextlib.redirect_stdout(None):
+            trn_ds = tf.keras.utils.image_dataset_from_directory(
+                self.directory,
+                labels=None,
+                label_mode=None,
+                batch_size=batch_size,
+                image_size=(self.steps * self.height, self.cameras * self.width),
+                validation_split=val_split,
+                subset="training",
+                seed=random_seed
+            )
+            val_ds = tf.keras.utils.image_dataset_from_directory(
+                self.directory,
+                labels=None,
+                label_mode=None,
+                batch_size=batch_size,
+                image_size=(self.steps * self.height, self.cameras * self.width),
+                validation_split=val_split,
+                subset="validation",
+                seed=random_seed
+            )
+        return trn_ds, val_ds
+
 
 def test():
     args = parse_arguments()
@@ -206,19 +270,21 @@ def test():
         verbose=args.verbose
     )
 
-    batch_size = 1
+    batch_size = 64
 
-    counter = 0
-    for batch in batch_provider.batch_generator("val", batch_size):
-        print(f"{counter}. batch of shape {batch.shape} has size of {batch.nbytes / 1024 / 1024:.2f} MB.")
-        for anchor, positive, negative in batch:
-            cv2.imshow('Anchor Image', anchor)
-            cv2.waitKey()
-            cv2.imshow('Positive Image', positive)
-            cv2.waitKey()
-            cv2.imshow('Negative Image', negative)
-            cv2.waitKey()
-        counter += 1
+    trn_ds, val_ds = batch_provider.get_dataset_generator(batch_size)
+
+    for batch in trn_ds:
+        for nonuplet in batch:
+            reshaped = cubify(nonuplet.numpy(), (224, 224, 3))
+            print(reshaped.shape)
+
+            for i in range(9):
+                plt.imshow(reshaped[i].astype("uint8"))
+                plt.axis("off")
+                plt.show()
+            break
+        break
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 18. 11. 2021
+Date: 20. 11. 2021
 """
 
 from argparse import ArgumentParser
@@ -11,7 +11,7 @@ import time
 import tensorflow as tf
 from tensorflow.keras import layers
 
-from src.model.BatchProvider import BatchProvider
+from src.model.BatchProvider import BatchProvider, cubify
 
 
 def parse_arguments():
@@ -54,7 +54,7 @@ def parse_arguments():
     parser.add_argument(
         '-b', '--batch_size',
         type=int,
-        default=128,
+        default=64,
         help="Number of triplets in a batch."
     )
     parser.add_argument(
@@ -66,16 +66,16 @@ def parse_arguments():
 
 
 def triplet_loss(anchor, positive, negative, margin=0.01):
-    d_pos = tf.reduce_sum(tf.square(anchor - positive), 1)
-    d_neg = tf.reduce_sum(tf.square(anchor - negative), 1)
-    loss = tf.maximum(0.0, margin + d_pos - d_neg)
+    d_pos = tf.math.reduce_sum(tf.math.square(anchor - positive))
+    d_neg = tf.math.reduce_sum(tf.math.square(anchor - negative))
+    loss = tf.math.maximum(0.0, margin + d_pos - d_neg)
 
     if d_pos < d_neg:
         accuracy = 1
     else:
         accuracy = 0
 
-    return tf.reduce_mean(loss), accuracy
+    return tf.math.reduce_mean(loss), accuracy
 
 
 class Encoder:
@@ -86,6 +86,9 @@ class Encoder:
         self.input_width = 224
         self.input_channels = 3
         self.output_dimension = 256
+
+        self.cameras = 3
+        self.steps = 3
 
         self.train_images, self.test_images, self.train_labels, self.test_labels = None, None, None, None
         self.model = self.optimizer = None
@@ -114,7 +117,32 @@ class Encoder:
 
         self.optimizer = tf.keras.optimizers.Adam()
 
-    def step(self, anchor, positive, negative):
+    def nonuplet_loss(self, nonuplet):
+        # Using fixed steps 0 (t) and 2 (t+14)
+        steps = [0, 2]
+        step1 = nonuplet[steps[0], :, :]
+        step2 = nonuplet[steps[1], :, :]
+
+        order = tf.random.shuffle([0, 1, 2])
+
+        loss_sum = 0
+        acc_sum = 0
+
+        for shift in range(self.cameras):
+            shifted_order = (order + shift) % 3
+
+            anchor = step1[shifted_order[0], :]
+            positive = step1[shifted_order[1], :]
+            negative = step2[shifted_order[2], :]
+
+            loss, acc = triplet_loss(anchor, positive, negative)
+
+            loss_sum += loss
+            acc_sum += acc
+
+        return loss_sum, acc_sum / 3
+
+    def step(self, nonuplet):
         trained_layers = [
             self.model.get_layer(name='trained').variables[0],
             self.model.get_layer(name='trained').variables[1]
@@ -123,54 +151,57 @@ class Encoder:
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(self.model.get_layer(name='trained').variables)
 
-            anchor_encoded = self.model(tf.expand_dims(anchor, axis=0))
-            positive_encoded = self.model(tf.expand_dims(positive, axis=0))
-            negative_encoded = self.model(tf.expand_dims(negative, axis=0))
+            nonuplet_encoded = self.model(nonuplet)
+            nonuplet_encoded_reshaped = tf.reshape(nonuplet_encoded, (3, 3, 256))
 
-            loss, accuracy = triplet_loss(anchor_encoded, positive_encoded, negative_encoded)
+            loss, accuracy = self.nonuplet_loss(nonuplet_encoded_reshaped)
 
         gradient = tape.gradient(loss, trained_layers)
         self.optimizer.apply_gradients(zip(gradient, trained_layers))
 
         return loss, accuracy
 
-    def fit(self, batch_provider, batch_size=128, epochs=10):
+    def fit(self, trn_ds, epochs=10):
         if self.verbose:
             print("En - Fitting the model on the training dataset...")
 
         for epoch in range(epochs):
             if self.verbose:
-                print(f"En -- Epoch {epoch:03d} started.")
+                print(f"En -- Epoch {epoch:02d} started.")
 
             loss_sum = accuracy_sum = runs = 0
 
             start_time = time.perf_counter()
-            for batch in batch_provider.batch_generator("train", batch_size):
-                for anchor, positive, negative in batch:
-                    loss, accuracy = self.step(anchor, positive, negative)
+            for batch in trn_ds:
+                for nonuplet in batch:
+                    reshaped = cubify(nonuplet.numpy(), (self.input_height, self.input_width, self.input_channels))
+
+                    loss, accuracy = self.step(reshaped)
 
                     runs += 1
                     loss_sum += loss
                     accuracy_sum += accuracy
+
             end_time = time.perf_counter()
 
             if self.verbose:
-                print(f"En -- Epoch {epoch:03d} finished after {end_time - start_time:.4f} s"
-                      f" - loss={loss_sum / runs:.6f}, accuracy={(accuracy_sum / runs) * 100:6.2f} %.")
+                print(f"En -- Epoch {epoch:02d} finished after {end_time - start_time:.4f} s"
+                      f" - loss={loss_sum / runs:.6f}, accuracy={(accuracy_sum / runs) * 100:6.2f%}.")
 
-    def evaluate(self, batch_provider, batch_size=128):
+    def evaluate(self, val_ds):
         if self.verbose:
             print("En - Evaluating the model on the validation dataset...")
 
         loss_sum = accuracy_sum = runs = 0
 
-        for batch in batch_provider.batch_generator("val", batch_size):
-            for anchor, positive, negative in batch:
-                anchor_encoded = self.model(tf.expand_dims(anchor, axis=0))
-                positive_encoded = self.model(tf.expand_dims(positive, axis=0))
-                negative_encoded = self.model(tf.expand_dims(negative, axis=0))
+        for batch in val_ds:
+            for nonuplet in batch:
+                reshaped = cubify(nonuplet.numpy(), (self.input_height, self.input_width, self.input_channels))
 
-                loss, accuracy = triplet_loss(anchor_encoded, positive_encoded, negative_encoded)
+                nonuplet_encoded = self.model(reshaped)
+                nonuplet_encoded_reshaped = tf.reshape(nonuplet_encoded, (3, 3, 256))
+
+                loss, accuracy = self.nonuplet_loss(nonuplet_encoded_reshaped)
 
                 runs += 1
                 loss_sum += loss
@@ -185,12 +216,14 @@ def main():
     encoder = Encoder(args.verbose)
     encoder.create_model()
 
-    encoder.fit(batch_provider, args.batch_size, args.epochs)
+    trn_ds, val_ds = batch_provider.get_dataset_generator(args.batch_size)
 
-    loss, accuracy = encoder.evaluate(batch_provider)
+    encoder.fit(trn_ds, args.epochs)
+
+    loss, accuracy = encoder.evaluate(val_ds)
     print("En - Overall model evaluation")
     print(f"En -- Loss: {loss:.6f}")
-    print(f"En -- Accuracy: {accuracy * 100:.2f} %")
+    print(f"En -- Accuracy: {accuracy * 100:.2f%}")
 
 
 if __name__ == "__main__":
