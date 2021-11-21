@@ -1,65 +1,27 @@
-"""Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
+"""
+Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
 Module for loading training data and rearranging them for specific training purposes.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
 Date: 21. 11. 2021
-Source: https://stackoverflow.com/questions/42297115/numpy-split-cube-into-cubes/42298440#42298440 (cubify function)
 """
 
 from pathlib import Path
-from argparse import ArgumentParser
 import random
 
 import numpy as np
 import cv2
 
-
-def parse_arguments():
-    parser = ArgumentParser()
-    parser.add_argument(
-        'directory',
-        type=str,
-        help="Path to the directory with grids of images (without slash at the end).",
-    )
-    parser.add_argument(
-        '-W', '--width',
-        type=int,
-        default=224,
-        help="Dimensions of a training image - width."
-    )
-    parser.add_argument(
-        '-H', '--height',
-        type=int,
-        default=224,
-        help="Dimensions of a training image - height."
-    )
-    parser.add_argument(
-        '-c', '--cameras',
-        type=int,
-        default=3,
-        help="Number of cameras forming the grid of images."
-    )
-    parser.add_argument(
-        '-s', '--steps',
-        type=int,
-        default=3,
-        help="Number of steps forming the grid of images."
-    )
-    parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help="Use to turn on additional text output about what is happening."
-    )
-    return parser.parse_args()
+from src.utils.params import parse_arguments
 
 
 class BatchProvider:
-    def __init__(self, directory, cameras, steps, width, height, verbose=False):
+    def __init__(self, directory, steps, cameras, height, width, verbose=False):
         self.directory = Path(directory)
-        self.width = width
-        self.height = height
-        self.cameras = cameras
         self.steps = steps
+        self.cameras = cameras
+        self.height = height
+        self.width = width
         self.file_paths = []
         self.files = None
         self.size = 0
@@ -200,11 +162,11 @@ def test():
 
     batch_provider = BatchProvider(
         args.directory,
-        args.cameras,
         args.steps,
-        args.width,
+        args.cameras,
         args.height,
-        verbose=args.verbose
+        args.width,
+        args.verbose
     )
 
     batch_size = 64

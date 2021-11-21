@@ -1,74 +1,24 @@
-"""Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
+"""
+Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
 Date: 21. 11. 2021
 """
 
-from argparse import ArgumentParser
 import time
 
 import tensorflow as tf
 from tensorflow.keras import layers
 
-from src.model.BatchProvider import BatchProvider, cubify, triplets_in_grid
-
-
-def parse_arguments():
-    parser = ArgumentParser()
-    parser.add_argument(
-        'directory',
-        type=str,
-        help="Path to the directory with grids of images (without slash at the end).",
-    )
-    parser.add_argument(
-        '-W', '--width',
-        type=int,
-        default=224,
-        help="Dimensions of a training image - width."
-    )
-    parser.add_argument(
-        '-H', '--height',
-        type=int,
-        default=224,
-        help="Dimensions of a training image - height."
-    )
-    parser.add_argument(
-        '-c', '--cameras',
-        type=int,
-        default=3,
-        help="Number of cameras forming the grid of images."
-    )
-    parser.add_argument(
-        '-s', '--steps',
-        type=int,
-        default=3,
-        help="Number of steps forming the grid of images."
-    )
-    parser.add_argument(
-        '-e', '--epochs',
-        type=int,
-        default=10,
-        help="Number of epochs to be performed on a dataset."
-    )
-    parser.add_argument(
-        '-b', '--batch_size',
-        type=int,
-        default=64,
-        help="Number of triplets in a batch."
-    )
-    parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help="Use to turn on additional text output about what is happening."
-    )
-    return parser.parse_args()
+from src.model.DatasetHandler import DatasetHandler, cubify, triplets_in_grid
+from src.utils.params import parse_arguments
 
 
 def triplet_loss(anchor, positive, negative, margin=0.01):
     a_p_distance = tf.math.reduce_sum(tf.math.square(anchor - positive))
     a_n_distance = tf.math.reduce_sum(tf.math.square(anchor - negative))
-    loss = tf.math.maximum(0.0, margin + a_p_distance - a_n_distance)
+    loss = tf.math.maximum(0., margin + a_p_distance - a_n_distance)
 
     if a_p_distance < a_n_distance:
         accuracy = 1
@@ -78,14 +28,14 @@ def triplet_loss(anchor, positive, negative, margin=0.01):
     return tf.math.reduce_mean(loss), accuracy
 
 
-def tuple_loss(nonuplet, triplet_indices):
+def tuple_loss(n_tuple, triplet_indices, margin=0.01):
     loss_sum = accuracy_sum = 0
 
     for indices in triplet_indices:
-        anchor = nonuplet[indices[0]]
-        positive = nonuplet[indices[1]]
-        negative = nonuplet[indices[2]]
-        loss, accuracy = triplet_loss(anchor, positive, negative)
+        anchor = n_tuple[indices[0]]
+        positive = n_tuple[indices[1]]
+        negative = n_tuple[indices[2]]
+        loss, accuracy = triplet_loss(anchor, positive, negative, margin)
 
         loss_sum += loss
         accuracy_sum += accuracy
@@ -94,22 +44,25 @@ def tuple_loss(nonuplet, triplet_indices):
 
 
 class Encoder:
-    def __init__(self, verbose):
+    def __init__(self, steps, cameras, height, width, channels, encoding_dim, margin, verbose=False):
+        self.steps = steps
+        self.cameras = cameras
+        self.height = height
+        self.width = width
+        self.channels = channels
+
+        self.encoding_dim = encoding_dim
+        self.margin = margin
+
         self.verbose = verbose
 
-        self.input_height = 224
-        self.input_width = 224
-        self.input_channels = 3
-        self.output_dimension = 256
-
-        self.cameras = 3
-        self.steps = 3
-
-        self.train_images, self.test_images, self.train_labels, self.test_labels = None, None, None, None
         self.model = self.optimizer = None
 
+        if self.verbose:
+            print("Encoder (En) initialized.")
+
     def create_model(self):
-        input_image = tf.keras.Input(shape=(self.input_height, self.input_width, self.input_channels))
+        input_image = tf.keras.Input(shape=(self.height, self.width, self.channels))
 
         resnet = tf.keras.applications.resnet50.ResNet50(include_top=False,
                                                          weights='imagenet',
@@ -118,7 +71,7 @@ class Encoder:
         head = resnet.output
         head = layers.AveragePooling2D(pool_size=(7, 7))(head)
         head = layers.Flatten()(head)
-        head = layers.Dense(self.output_dimension, activation=None, name='trained')(head)
+        head = layers.Dense(self.encoding_dim, activation=None, name='trained')(head)
         # Normalize to a vector on a Unit Hypersphere.
         head = layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=1))(head)
 
@@ -132,7 +85,7 @@ class Encoder:
 
         self.optimizer = tf.keras.optimizers.Adam()
 
-    def step(self, nonuplet, triplet_indices):
+    def step(self, n_tuple, triplet_indices):
         trained_layers = [
             self.model.get_layer(name='trained').variables[0],
             self.model.get_layer(name='trained').variables[1]
@@ -140,15 +93,15 @@ class Encoder:
 
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(self.model.get_layer(name='trained').variables)
-            nonuplet_encoded = self.model(nonuplet)
-            loss, accuracy = tuple_loss(nonuplet_encoded, triplet_indices)
+            n_tuple_encoded = self.model(n_tuple)
+            loss, accuracy = tuple_loss(n_tuple_encoded, triplet_indices, self.margin)
 
         gradient = tape.gradient(loss, trained_layers)
         self.optimizer.apply_gradients(zip(gradient, trained_layers))
 
         return loss, accuracy
 
-    def fit(self, trn_ds, epochs=10):
+    def fit(self, trn_ds, epochs):
         if self.verbose:
             print("En - Fitting the model on the training dataset...")
 
@@ -164,7 +117,7 @@ class Encoder:
 
             for batch in trn_ds:
                 for grid in batch:
-                    grid_reshaped = cubify(grid.numpy(), (self.input_height, self.input_width, self.input_channels))
+                    grid_reshaped = cubify(grid.numpy(), (self.height, self.width, self.channels))
                     loss, accuracy = self.step(grid_reshaped, triplet_indices)
 
                     runs += 1
@@ -184,14 +137,15 @@ class Encoder:
         loss_sum = accuracy_sum = runs = 0
 
         triplet_indices = triplets_in_grid((self.steps, self.cameras))
+        margin = 0.
 
         start_time = time.perf_counter()
 
         for batch in val_ds:
             for grid in batch:
-                grid_reshaped = cubify(grid.numpy(), (self.input_height, self.input_width, self.input_channels))
+                grid_reshaped = cubify(grid.numpy(), (self.height, self.width, self.channels))
                 grid_reshaped_encoded = self.model(grid_reshaped)
-                loss, accuracy = tuple_loss(grid_reshaped_encoded, triplet_indices)
+                loss, accuracy = tuple_loss(grid_reshaped_encoded, triplet_indices, margin)
 
                 runs += 1
                 loss_sum += loss
@@ -206,11 +160,27 @@ class Encoder:
 
 def main():
     args = parse_arguments()
-    batch_provider = BatchProvider(args.directory, args.cameras, args.steps, args.width, args.height)
-    encoder = Encoder(args.verbose)
+    dataset_handler = DatasetHandler(
+        args.directory,
+        args.steps,
+        args.cameras,
+        args.height,
+        args.width,
+        args.verbose
+    )
+    encoder = Encoder(
+        args.steps,
+        args.cameras,
+        args.height,
+        args.width,
+        args.channels,
+        args.encoding_dim,
+        args.margin,
+        args.verbose
+    )
     encoder.create_model()
 
-    trn_ds, val_ds = batch_provider.get_dataset_generator(args.batch_size)
+    trn_ds, val_ds = dataset_handler.get_dataset_generators(args.batch_size)
 
     encoder.fit(trn_ds, args.epochs)
 
