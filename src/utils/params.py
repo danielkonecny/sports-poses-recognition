@@ -71,6 +71,12 @@ def parse_arguments():
         help="Margin used for triplet loss - positive has to be at least by a margin closer to anchor than negative."
     )
     parser.add_argument(
+        '-V', '--val_split',
+        type=float,
+        default=0.2,
+        help="Number between 0 and 1 representing proportion of dataset to be used for validation."
+    )
+    parser.add_argument(
         '-v', '--verbose',
         action='store_true',
         help="Use to turn on additional text output about what is happening."

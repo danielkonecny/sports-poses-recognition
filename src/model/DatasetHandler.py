@@ -101,7 +101,7 @@ def test():
         args.verbose
     )
 
-    trn_ds, _ = dataset_handler.get_dataset_generators(args.batch_size)
+    trn_ds, _ = dataset_handler.get_dataset_generators(args.batch_size, args.val_split)
 
     for batch in trn_ds:
         for grid in batch:

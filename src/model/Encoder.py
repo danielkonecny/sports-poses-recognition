@@ -6,7 +6,9 @@ Author: Daniel Konecny (xkonec75)
 Date: 21. 11. 2021
 """
 
+from pathlib import Path
 import time
+import datetime
 
 import tensorflow as tf
 from tensorflow.keras import layers
@@ -21,15 +23,15 @@ def triplet_loss(anchor, positive, negative, margin=0.01):
     loss = tf.math.maximum(0., margin + a_p_distance - a_n_distance)
 
     if a_p_distance < a_n_distance:
-        accuracy = 1
+        accuracy = 1.
     else:
-        accuracy = 0
+        accuracy = 0.
 
     return tf.math.reduce_mean(loss), accuracy
 
 
 def tuple_loss(n_tuple, triplet_indices, margin=0.01):
-    loss_sum = accuracy_sum = 0
+    loss_sum = accuracy_sum = 0.
 
     for indices in triplet_indices:
         anchor = n_tuple[indices[0]]
@@ -44,7 +46,9 @@ def tuple_loss(n_tuple, triplet_indices, margin=0.01):
 
 
 class Encoder:
-    def __init__(self, steps, cameras, height, width, channels, encoding_dim, margin, verbose=False):
+    def __init__(self, directory, steps, cameras, height, width, channels, encoding_dim, margin, verbose=False):
+        self.directory = Path(directory)
+
         self.steps = steps
         self.cameras = cameras
         self.height = height
@@ -57,6 +61,18 @@ class Encoder:
         self.verbose = verbose
 
         self.model = self.optimizer = None
+        self.trn_loss = tf.keras.metrics.Mean('trn_loss', dtype=tf.float32)
+        self.trn_accuracy = tf.keras.metrics.Mean('trn_accuracy', dtype=tf.float32)
+        self.val_loss = tf.keras.metrics.Mean('val_loss', dtype=tf.float32)
+        self.val_accuracy = tf.keras.metrics.Mean('val_accuracy', dtype=tf.float32)
+
+        current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.train_summary_writer = tf.summary.create_file_writer(
+            str(self.directory / f'logs/gradient_tape/{current_time}/train')
+        )
+        self.val_summary_writer = tf.summary.create_file_writer(
+            str(self.directory / f'logs/gradient_tape/{current_time}/val')
+        )
 
         if self.verbose:
             print("Encoder (En) initialized.")
@@ -85,7 +101,9 @@ class Encoder:
 
         self.optimizer = tf.keras.optimizers.Adam()
 
-    def step(self, n_tuple, triplet_indices):
+    def train_step(self, grid, triplet_indices):
+        n_tuple = cubify(grid.numpy(), (self.height, self.width, self.channels))
+
         trained_layers = [
             self.model.get_layer(name='trained').variables[0],
             self.model.get_layer(name='trained').variables[1]
@@ -99,63 +117,75 @@ class Encoder:
         gradient = tape.gradient(loss, trained_layers)
         self.optimizer.apply_gradients(zip(gradient, trained_layers))
 
-        return loss, accuracy
+        self.trn_loss(loss)
+        self.trn_accuracy(accuracy)
 
-    def fit(self, trn_ds, epochs):
+    def train_on_batches(self, trn_ds, triplet_indices, index):
+        for batch in trn_ds:
+            for grid in batch:
+                self.train_step(grid, triplet_indices)
+
+            with self.train_summary_writer.as_default():
+                tf.summary.scalar('loss', self.trn_loss.result(), step=index)
+                tf.summary.scalar('accuracy', self.trn_accuracy.result(), step=index)
+
+            if self.verbose:
+                print(f"En --- Train: Loss = {self.trn_loss.result():.6f},"
+                      f" Accuracy = {self.trn_accuracy.result():7.2%},")
+
+            self.trn_loss.reset_states()
+            self.trn_accuracy.reset_states()
+
+            index += 1
+
+        return index
+
+    def val_step(self, grid, triplet_indices):
+        margin = 0.
+
+        grid_reshaped = cubify(grid.numpy(), (self.height, self.width, self.channels))
+        grid_reshaped_encoded = self.model(grid_reshaped)
+        loss, accuracy = tuple_loss(grid_reshaped_encoded, triplet_indices, margin)
+
+        self.val_loss(loss)
+        self.val_accuracy(accuracy)
+
+    def val_on_batches(self, val_ds, triplet_indices, index):
+        for batch in val_ds:
+            for grid in batch:
+                self.val_step(grid, triplet_indices)
+
+        with self.val_summary_writer.as_default():
+            tf.summary.scalar('loss', self.val_loss.result(), step=index - 1)
+            tf.summary.scalar('accuracy', self.val_accuracy.result(), step=index - 1)
+
+        if self.verbose:
+            print(f"En --- Validation: Loss = {self.val_loss.result():.6f},"
+                  f" Accuracy = {self.val_accuracy.result():7.2%}.")
+
+        self.val_loss.reset_states()
+        self.val_accuracy.reset_states()
+
+    def fit(self, trn_ds, val_ds, epochs):
         if self.verbose:
             print("En - Fitting the model on the training dataset...")
 
         triplet_indices = triplets_in_grid((self.steps, self.cameras))
+        train_batch_index = 0
 
         for epoch in range(epochs):
-            if self.verbose:
-                print(f"En -- Epoch {epoch:02d}", end=" ")
-
-            loss_sum = accuracy_sum = runs = 0
-
             start_time = time.perf_counter()
 
-            for batch in trn_ds:
-                for grid in batch:
-                    grid_reshaped = cubify(grid.numpy(), (self.height, self.width, self.channels))
-                    loss, accuracy = self.step(grid_reshaped, triplet_indices)
+            if self.verbose:
+                print(f"En -- Epoch {epoch + 1:02d}.")
 
-                    runs += 1
-                    loss_sum += loss
-                    accuracy_sum += accuracy
+            train_batch_index = self.train_on_batches(trn_ds, triplet_indices, train_batch_index)
+            self.val_on_batches(val_ds, triplet_indices, train_batch_index)
 
             end_time = time.perf_counter()
 
             if self.verbose:
-                print(f"finished after {end_time - start_time:.4f} s"
-                      f" - loss={loss_sum / runs:.6f}, accuracy={accuracy_sum / runs:6.2%}.")
-
-    def evaluate(self, val_ds):
-        if self.verbose:
-            print("En - Evaluating the model on the validation dataset...")
-
-        loss_sum = accuracy_sum = runs = 0
-
-        triplet_indices = triplets_in_grid((self.steps, self.cameras))
-        margin = 0.
-
-        start_time = time.perf_counter()
-
-        for batch in val_ds:
-            for grid in batch:
-                grid_reshaped = cubify(grid.numpy(), (self.height, self.width, self.channels))
-                grid_reshaped_encoded = self.model(grid_reshaped)
-                loss, accuracy = tuple_loss(grid_reshaped_encoded, triplet_indices, margin)
-
-                runs += 1
-                loss_sum += loss
-                accuracy_sum += accuracy
-
-        end_time = time.perf_counter()
-
-        print(f"En -- Finished after {end_time - start_time:.4f} s.")
-
-        return loss_sum / runs, accuracy_sum / runs
+                print(f"En --- Finished after {end_time - start_time:.4f} s.")
 
 
 def main():
@@ -169,6 +199,7 @@ def main():
         args.verbose
     )
     encoder = Encoder(
+        args.directory,
         args.steps,
         args.cameras,
         args.height,
@@ -180,14 +211,9 @@ def main():
     )
     encoder.create_model()
 
-    trn_ds, val_ds = dataset_handler.get_dataset_generators(args.batch_size)
+    trn_ds, val_ds = dataset_handler.get_dataset_generators(args.batch_size, args.val_split)
 
-    encoder.fit(trn_ds, args.epochs)
-
-    loss, accuracy = encoder.evaluate(val_ds)
-    print("En - Overall model evaluation")
-    print(f"En -- Loss: {loss:.6f}")
-    print(f"En -- Accuracy: {accuracy:.2%}")
+    encoder.fit(trn_ds, val_ds, args.epochs)
 
 
 if __name__ == "__main__":
