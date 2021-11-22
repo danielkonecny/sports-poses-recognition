@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 21. 11. 2021
+Date: 22. 11. 2021
 """
 
 from pathlib import Path
@@ -48,7 +48,8 @@ def tuple_loss(n_tuple, triplet_indices, margin=0.01):
 
 
 class Encoder:
-    def __init__(self, directory, steps, cameras, height, width, channels, encoding_dim, margin, verbose=False):
+    def __init__(self, directory, steps, cameras, height, width, channels, encoding_dim, margin,
+                 ckpt_dir, restore, verbose=False):
         self.directory = Path(directory)
 
         self.steps = steps
@@ -60,14 +61,18 @@ class Encoder:
         self.encoding_dim = encoding_dim
         self.margin = margin
 
+        self.ckpt_dir = str(self.directory / ckpt_dir)
+        self.restore = restore
+
         self.verbose = verbose
 
-        self.model = self.optimizer = None
+        self.model = self.optimizer = self.ckpt = self.manager = None
         self.trn_loss = tf.keras.metrics.Mean('trn_loss', dtype=tf.float32)
         self.trn_accuracy = tf.keras.metrics.Mean('trn_accuracy', dtype=tf.float32)
         self.val_loss = tf.keras.metrics.Mean('val_loss', dtype=tf.float32)
         self.val_accuracy = tf.keras.metrics.Mean('val_accuracy', dtype=tf.float32)
 
+        # TODO - Can TensorBoard session be somehow restored when starting from checkpoint?
         self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         self.train_writer = tf.summary.create_file_writer(
             str(self.directory / f'logs/{self.current_time}/gradient_tape/train')
@@ -80,6 +85,9 @@ class Encoder:
             print("Encoder (En) initialized.")
 
     def create_model(self):
+        if self.verbose:
+            print("En - Creating encoder model.")
+
         input_image = tf.keras.Input(shape=(self.height, self.width, self.channels))
 
         resnet = tf.keras.applications.resnet50.ResNet50(include_top=False,
@@ -102,6 +110,17 @@ class Encoder:
         #     print(layer.name, layer.trainable)
 
         self.optimizer = tf.keras.optimizers.Adam()
+
+        self.ckpt = tf.train.Checkpoint(step=tf.Variable(0), optimizer=self.optimizer, net=self.model)
+        self.manager = tf.train.CheckpointManager(self.ckpt, self.ckpt_dir, max_to_keep=5)
+
+        if self.restore:
+            self.ckpt.restore(self.manager.latest_checkpoint)
+
+        if self.verbose and self.restore and self.manager.latest_checkpoint:
+            print(f"En -- Checkpoint restored from {self.manager.latest_checkpoint}")
+        elif self.verbose:
+            print("En -- Checkpoint initialized in ckpts directory.")
 
     def train_step(self, grid, triplet_indices):
         n_tuple = cubify(grid.numpy(), (self.height, self.width, self.channels))
@@ -135,7 +154,7 @@ class Encoder:
 
             if self.verbose:
                 print(f"En --- Train: Loss = {self.trn_loss.result():.6f},"
-                      f" Accuracy = {self.trn_accuracy.result():7.2%},")
+                      f" Accuracy = {self.trn_accuracy.result():7.2%}.")
 
             self.trn_loss.reset_states()
             self.trn_accuracy.reset_states()
@@ -191,12 +210,18 @@ class Encoder:
         triplet_indices = triplets_in_grid((self.steps, self.cameras))
         train_batch_index = 0
 
-        for epoch in range(epochs):
+        for _ in range(epochs):
             if self.verbose:
-                print(f"En -- Epoch {epoch + 1:02d}.")
+                # TODO - Fix wrong number after restoring (ckpt.step is always 2 lower than saved ckpt-number?)
+                print(f"En -- Epoch {self.ckpt.step + 1:02d}.")
 
             train_batch_index = self.train_on_batches(trn_ds, triplet_indices, train_batch_index)
             self.val_on_batches(val_ds, triplet_indices, train_batch_index)
+
+            if (int(self.ckpt.step) + 1) % 1 == 0:
+                save_path = self.manager.save()
+                print(f"En --- Checkpoint saved at {save_path}.")
+            self.ckpt.step.assign_add(1)
 
 
 def main():
@@ -218,6 +243,8 @@ def main():
         args.channels,
         args.encoding_dim,
         args.margin,
+        args.ckpt_dir,
+        args.restore,
         args.verbose
     )
     encoder.create_model()

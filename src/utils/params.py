@@ -77,6 +77,17 @@ def parse_arguments():
         help="Number between 0 and 1 representing proportion of dataset to be used for validation."
     )
     parser.add_argument(
+        '-r', '--restore',
+        action='store_true',
+        help="Use when wanting to restore training from checkpoints."
+    )
+    parser.add_argument(
+        '--ckpt_dir',
+        type=str,
+        default='ckpts',
+        help="Path to directory with checkpoints created under the directory provided in the first argument."
+    )
+    parser.add_argument(
         '-v', '--verbose',
         action='store_true',
         help="Use to turn on additional text output about what is happening."
