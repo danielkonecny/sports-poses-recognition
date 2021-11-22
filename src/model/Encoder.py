@@ -17,6 +17,7 @@ from src.model.DatasetHandler import DatasetHandler, cubify, triplets_in_grid
 from src.utils.params import parse_arguments
 
 
+@tf.function
 def triplet_loss(anchor, positive, negative, margin=0.01):
     a_p_distance = tf.math.reduce_sum(tf.math.square(anchor - positive))
     a_n_distance = tf.math.reduce_sum(tf.math.square(anchor - negative))
@@ -30,6 +31,7 @@ def triplet_loss(anchor, positive, negative, margin=0.01):
     return tf.math.reduce_mean(loss), accuracy
 
 
+@tf.function
 def tuple_loss(n_tuple, triplet_indices, margin=0.01):
     loss_sum = accuracy_sum = 0.
 
@@ -66,12 +68,12 @@ class Encoder:
         self.val_loss = tf.keras.metrics.Mean('val_loss', dtype=tf.float32)
         self.val_accuracy = tf.keras.metrics.Mean('val_accuracy', dtype=tf.float32)
 
-        current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        self.train_summary_writer = tf.summary.create_file_writer(
-            str(self.directory / f'logs/gradient_tape/{current_time}/train')
+        self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.train_writer = tf.summary.create_file_writer(
+            str(self.directory / f'logs/{self.current_time}/gradient_tape/train')
         )
-        self.val_summary_writer = tf.summary.create_file_writer(
-            str(self.directory / f'logs/gradient_tape/{current_time}/val')
+        self.val_writer = tf.summary.create_file_writer(
+            str(self.directory / f'logs/{self.current_time}/gradient_tape/val')
         )
 
         if self.verbose:
@@ -121,11 +123,13 @@ class Encoder:
         self.trn_accuracy(accuracy)
 
     def train_on_batches(self, trn_ds, triplet_indices, index):
+        start_time = time.perf_counter()
+
         for batch in trn_ds:
             for grid in batch:
                 self.train_step(grid, triplet_indices)
 
-            with self.train_summary_writer.as_default():
+            with self.train_writer.as_default():
                 tf.summary.scalar('loss', self.trn_loss.result(), step=index)
                 tf.summary.scalar('accuracy', self.trn_accuracy.result(), step=index)
 
@@ -137,6 +141,14 @@ class Encoder:
             self.trn_accuracy.reset_states()
 
             index += 1
+
+        end_time = time.perf_counter()
+
+        with self.train_writer.as_default():
+            tf.summary.scalar('time', end_time - start_time, step=index - 1)
+
+        if self.verbose:
+            print(f"En --- Train: Time = {end_time - start_time:.2f} s.")
 
         return index
 
@@ -151,17 +163,23 @@ class Encoder:
         self.val_accuracy(accuracy)
 
     def val_on_batches(self, val_ds, triplet_indices, index):
+        start_time = time.perf_counter()
+
         for batch in val_ds:
             for grid in batch:
                 self.val_step(grid, triplet_indices)
 
-        with self.val_summary_writer.as_default():
+        end_time = time.perf_counter()
+
+        with self.val_writer.as_default():
             tf.summary.scalar('loss', self.val_loss.result(), step=index - 1)
             tf.summary.scalar('accuracy', self.val_accuracy.result(), step=index - 1)
+            tf.summary.scalar('time', end_time - start_time, step=index - 1)
 
         if self.verbose:
             print(f"En --- Validation: Loss = {self.val_loss.result():.6f},"
-                  f" Accuracy = {self.val_accuracy.result():7.2%}.")
+                  f" Accuracy = {self.val_accuracy.result():7.2%},"
+                  f" Time = {end_time - start_time:.2f} s.")
 
         self.val_loss.reset_states()
         self.val_accuracy.reset_states()
@@ -174,18 +192,11 @@ class Encoder:
         train_batch_index = 0
 
         for epoch in range(epochs):
-            start_time = time.perf_counter()
-
             if self.verbose:
                 print(f"En -- Epoch {epoch + 1:02d}.")
 
             train_batch_index = self.train_on_batches(trn_ds, triplet_indices, train_batch_index)
             self.val_on_batches(val_ds, triplet_indices, train_batch_index)
-
-            end_time = time.perf_counter()
-
-            if self.verbose:
-                print(f"En --- Finished after {end_time - start_time:.4f} s.")
 
 
 def main():

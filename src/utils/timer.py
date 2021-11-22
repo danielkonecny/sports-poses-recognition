@@ -1,6 +1,9 @@
 """
-
-Source: https://realpython.com/primer-on-python-decorators/#timing-functions
+Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
+Module for timing of a function via decorator.
+Organisation: Brno University of Technology - Faculty of Information Technology
+Author: Daniel Konecny (xkonec75)
+Date: 22. 11. 2021
 """
 
 import functools
@@ -10,6 +13,7 @@ import time
 def timer(func):
     """
     Print the runtime of the decorated function
+    Source: https://realpython.com/primer-on-python-decorators/#timing-functions
     """
 
     @functools.wraps(func)

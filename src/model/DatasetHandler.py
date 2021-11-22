@@ -63,6 +63,9 @@ class DatasetHandler:
             print("Dataset Handler (DH) initialized.")
 
     def get_dataset_generators(self, batch_size=64, val_split=0.2):
+        if self.verbose:
+            print("DH - Loading train and validation dataset...")
+
         random_seed = tf.random.uniform(shape=(), minval=1, maxval=2 ** 32, dtype=tf.int64)
 
         with contextlib.redirect_stdout(None):
@@ -86,6 +89,20 @@ class DatasetHandler:
                 subset="validation",
                 seed=random_seed
             )
+        print(f'DH -- Number of train batches loaded: {tf.data.experimental.cardinality(trn_ds)}.')
+        print(f'DH -- Number of validation batches loaded: {tf.data.experimental.cardinality(val_ds)}.')
+
+        """
+        Optimization options:
+        - prefetch - no significant improvement noticed
+            trn_ds = trn_ds.prefetch(buffer_size=tf.data.AUTOTUNE)
+            val_ds = val_ds.prefetch(buffer_size=tf.data.AUTOTUNE)
+        
+        - cache - significant increase of execution time
+            trn_ds = trn_ds.cache()
+            val_ds = val_ds.cache()
+        """
+
         return trn_ds, val_ds
 
 
