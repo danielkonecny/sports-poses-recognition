@@ -13,7 +13,8 @@ import datetime
 import tensorflow as tf
 from tensorflow.keras import layers
 
-from src.model.DatasetHandler import DatasetHandler, cubify, triplets_in_grid
+from src.model.Cubify import Cubify
+from src.model.DatasetHandler import DatasetHandler, triplets_in_grid
 from src.utils.params import parse_arguments
 
 
@@ -88,14 +89,15 @@ class Encoder:
         if self.verbose:
             print("En - Creating encoder model.")
 
-        input_image = tf.keras.Input(shape=(self.height, self.width, self.channels))
+        input_image = tf.keras.Input(shape=(self.height * self.steps, self.width * self.cameras, self.channels))
 
-        resnet = tf.keras.applications.resnet50.ResNet50(include_top=False,
-                                                         weights='imagenet',
-                                                         input_tensor=input_image)
+        "'__call__' method is inherited from 'tf.keras.layers.Layer' and calls defined 'call' method, so no problem."
+        # noinspection PyCallingNonCallable
+        cubify_layer = Cubify((224, 224, 3))(input_image)
 
-        head = resnet.output
-        head = layers.AveragePooling2D(pool_size=(7, 7))(head)
+        resnet = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet')(cubify_layer)
+
+        head = layers.AveragePooling2D(pool_size=(7, 7))(resnet)
         head = layers.Flatten()(head)
         head = layers.Dense(self.encoding_dim, activation=None, name='trained')(head)
         # Normalize to a vector on a Unit Hypersphere.
@@ -122,12 +124,13 @@ class Encoder:
         elif self.verbose:
             print("En -- Checkpoint initialized in ckpts directory.")
 
+    @tf.function
     def train_step(self, grid, triplet_indices):
-        n_tuple = cubify(grid.numpy(), (self.height, self.width, self.channels))
+        n_tuple = tf.expand_dims(grid, axis=0)
 
         trained_layers = [
-            self.model.get_layer(name='trained').variables[0],
-            self.model.get_layer(name='trained').variables[1]
+            self.model.get_layer(name='trained').kernel,
+            self.model.get_layer(name='trained').bias
         ]
 
         with tf.GradientTape(watch_accessed_variables=False) as tape:
@@ -169,10 +172,11 @@ class Encoder:
         if self.verbose:
             print(f"En --- Train: Time = {end_time - start_time:.2f} s.")
 
+    @tf.function
     def val_step(self, grid, triplet_indices):
         margin = 0.
 
-        grid_reshaped = cubify(grid.numpy(), (self.height, self.width, self.channels))
+        grid_reshaped = tf.expand_dims(grid, axis=0)
         grid_reshaped_encoded = self.model(grid_reshaped)
         loss, accuracy = tuple_loss(grid_reshaped_encoded, triplet_indices, margin)
 

@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for loading training data and rearranging them for specific training purposes.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 21. 11. 2021
+Date: 24. 11. 2021
 """
 
 from pathlib import Path
@@ -17,20 +17,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from src.utils.params import parse_arguments
-
-
-def cubify(image_grid, new_shape):
-    """
-    Converts grid of images from one image to 1-D array of all images.
-    new_shape must divide old_shape evenly or else ValueError will be raised.
-    Source: https://stackoverflow.com/questions/42297115/numpy-split-cube-into-cubes/42298440#42298440
-    """
-    old_shape = np.array(image_grid.shape)
-    repeats = (old_shape / new_shape).astype(int)
-    tmp_shape = np.column_stack([repeats, new_shape]).ravel()
-    order = np.arange(len(tmp_shape))
-    order = np.concatenate([order[::2], order[1::2]])
-    return image_grid.reshape(tmp_shape).transpose(order).reshape(-1, *new_shape)
 
 
 def triplets_in_grid(grid_shape):
@@ -122,13 +108,9 @@ def test():
 
     for batch in trn_ds:
         for grid in batch:
-            grid_reshaped = cubify(grid.numpy(), (args.height, args.width, args.channels))
-            print(grid_reshaped.shape)
-
-            for i in range(args.steps * args.cameras):
-                plt.imshow(grid_reshaped[i].astype("uint8"))
-                plt.axis("off")
-                plt.show()
+            plt.imshow(grid)
+            plt.axis("off")
+            plt.show()
             break
         break
 
