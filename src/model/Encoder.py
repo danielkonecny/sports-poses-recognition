@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 22. 11. 2021
+Date: 24. 11. 2021
 """
 
 from pathlib import Path
@@ -72,7 +72,6 @@ class Encoder:
         self.val_loss = tf.keras.metrics.Mean('val_loss', dtype=tf.float32)
         self.val_accuracy = tf.keras.metrics.Mean('val_accuracy', dtype=tf.float32)
 
-        # TODO - Can TensorBoard session be somehow restored when starting from checkpoint?
         self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         self.train_writer = tf.summary.create_file_writer(
             str(self.directory / f'logs/{self.current_time}/gradient_tape/train')
@@ -80,6 +79,7 @@ class Encoder:
         self.val_writer = tf.summary.create_file_writer(
             str(self.directory / f'logs/{self.current_time}/gradient_tape/val')
         )
+        self.writer_index = 0
 
         if self.verbose:
             print("Encoder (En) initialized.")
@@ -141,7 +141,7 @@ class Encoder:
         self.trn_loss(loss)
         self.trn_accuracy(accuracy)
 
-    def train_on_batches(self, trn_ds, triplet_indices, index):
+    def train_on_batches(self, trn_ds, triplet_indices):
         start_time = time.perf_counter()
 
         for batch in trn_ds:
@@ -149,8 +149,8 @@ class Encoder:
                 self.train_step(grid, triplet_indices)
 
             with self.train_writer.as_default():
-                tf.summary.scalar('loss', self.trn_loss.result(), step=index)
-                tf.summary.scalar('accuracy', self.trn_accuracy.result(), step=index)
+                tf.summary.scalar('loss', self.trn_loss.result(), step=self.writer_index)
+                tf.summary.scalar('accuracy', self.trn_accuracy.result(), step=self.writer_index)
 
             if self.verbose:
                 print(f"En --- Train: Loss = {self.trn_loss.result():.6f},"
@@ -159,17 +159,15 @@ class Encoder:
             self.trn_loss.reset_states()
             self.trn_accuracy.reset_states()
 
-            index += 1
+            self.writer_index += 1
 
         end_time = time.perf_counter()
 
         with self.train_writer.as_default():
-            tf.summary.scalar('time', end_time - start_time, step=index - 1)
+            tf.summary.scalar('time', end_time - start_time, step=self.writer_index - 1)
 
         if self.verbose:
             print(f"En --- Train: Time = {end_time - start_time:.2f} s.")
-
-        return index
 
     def val_step(self, grid, triplet_indices):
         margin = 0.
@@ -181,7 +179,7 @@ class Encoder:
         self.val_loss(loss)
         self.val_accuracy(accuracy)
 
-    def val_on_batches(self, val_ds, triplet_indices, index):
+    def val_on_batches(self, val_ds, triplet_indices):
         start_time = time.perf_counter()
 
         for batch in val_ds:
@@ -191,9 +189,9 @@ class Encoder:
         end_time = time.perf_counter()
 
         with self.val_writer.as_default():
-            tf.summary.scalar('loss', self.val_loss.result(), step=index - 1)
-            tf.summary.scalar('accuracy', self.val_accuracy.result(), step=index - 1)
-            tf.summary.scalar('time', end_time - start_time, step=index - 1)
+            tf.summary.scalar('loss', self.val_loss.result(), step=self.writer_index - 1)
+            tf.summary.scalar('accuracy', self.val_accuracy.result(), step=self.writer_index - 1)
+            tf.summary.scalar('time', end_time - start_time, step=self.writer_index - 1)
 
         if self.verbose:
             print(f"En --- Validation: Loss = {self.val_loss.result():.6f},"
@@ -208,17 +206,16 @@ class Encoder:
             print("En - Fitting the model on the training dataset...")
 
         triplet_indices = triplets_in_grid((self.steps, self.cameras))
-        train_batch_index = 0
+        self.writer_index = self.ckpt.save_counter * tf.data.experimental.cardinality(trn_ds)
 
         for _ in range(epochs):
             if self.verbose:
-                # TODO - Fix wrong number after restoring (ckpt.step is always 2 lower than saved ckpt-number?)
-                print(f"En -- Epoch {self.ckpt.step + 1:02d}.")
+                print(f"En -- Epoch {self.ckpt.save_counter + 1:02d}.")
 
-            train_batch_index = self.train_on_batches(trn_ds, triplet_indices, train_batch_index)
-            self.val_on_batches(val_ds, triplet_indices, train_batch_index)
+            self.train_on_batches(trn_ds, triplet_indices)
+            self.val_on_batches(val_ds, triplet_indices)
 
-            if (int(self.ckpt.step) + 1) % 1 == 0:
+            if (int(self.ckpt.save_counter) + 1) % 1 == 0:
                 save_path = self.manager.save()
                 print(f"En --- Checkpoint saved at {save_path}.")
             self.ckpt.step.assign_add(1)
