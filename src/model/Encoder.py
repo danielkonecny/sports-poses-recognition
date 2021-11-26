@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 24. 11. 2021
+Date: 26. 11. 2021
 """
 
 from pathlib import Path
@@ -93,9 +93,14 @@ class Encoder:
 
         "'__call__' method is inherited from 'tf.keras.layers.Layer' and calls defined 'call' method, so no problem."
         # noinspection PyCallingNonCallable
-        cubify_layer = Cubify((224, 224, 3))(input_image)
+        cubify = Cubify((self.height, self.width, self.channels))(input_image)
 
-        resnet = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet')(cubify_layer)
+        data_augmentation = tf.keras.Sequential([
+            layers.RandomFlip("horizontal_and_vertical"),
+            layers.RandomRotation(0.1, fill_mode='nearest'),
+        ])(cubify)
+
+        resnet = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet')(data_augmentation)
 
         head = layers.AveragePooling2D(pool_size=(7, 7))(resnet)
         head = layers.Flatten()(head)
@@ -107,9 +112,6 @@ class Encoder:
         for layer in self.model.layers:
             layer.trainable = False
         self.model.get_layer(name='trained').trainable = True
-
-        # for layer in self.model.layers:
-        #     print(layer.name, layer.trainable)
 
         self.optimizer = tf.keras.optimizers.Adam()
 
@@ -126,18 +128,16 @@ class Encoder:
 
     @tf.function
     def train_step(self, grid, triplet_indices):
-        n_tuple = tf.expand_dims(grid, axis=0)
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
+            tape.watch(self.model.get_layer(name='trained').variables)
+            n_tuple = tf.expand_dims(grid, axis=0)
+            n_tuple_encoded = self.model(n_tuple, training=True)
+            loss, accuracy = tuple_loss(n_tuple_encoded, triplet_indices, self.margin)
 
         trained_layers = [
             self.model.get_layer(name='trained').kernel,
             self.model.get_layer(name='trained').bias
         ]
-
-        with tf.GradientTape(watch_accessed_variables=False) as tape:
-            tape.watch(self.model.get_layer(name='trained').variables)
-            n_tuple_encoded = self.model(n_tuple)
-            loss, accuracy = tuple_loss(n_tuple_encoded, triplet_indices, self.margin)
-
         gradient = tape.gradient(loss, trained_layers)
         self.optimizer.apply_gradients(zip(gradient, trained_layers))
 
@@ -176,9 +176,9 @@ class Encoder:
     def val_step(self, grid, triplet_indices):
         margin = 0.
 
-        grid_reshaped = tf.expand_dims(grid, axis=0)
-        grid_reshaped_encoded = self.model(grid_reshaped)
-        loss, accuracy = tuple_loss(grid_reshaped_encoded, triplet_indices, margin)
+        n_tuple = tf.expand_dims(grid, axis=0)
+        n_tuple_encoded = self.model(n_tuple, training=False)
+        loss, accuracy = tuple_loss(n_tuple_encoded, triplet_indices, margin)
 
         self.val_loss(loss)
         self.val_accuracy(accuracy)
@@ -219,10 +219,24 @@ class Encoder:
             self.train_on_batches(trn_ds, triplet_indices)
             self.val_on_batches(val_ds, triplet_indices)
 
-            if (int(self.ckpt.save_counter) + 1) % 1 == 0:
-                save_path = self.manager.save()
-                print(f"En --- Checkpoint saved at {save_path}.")
+            save_path = self.manager.save()
             self.ckpt.step.assign_add(1)
+
+            if self.verbose:
+                print(f"En --- Checkpoint saved at {save_path}.")
+
+    def predict(self, images):
+        if self.verbose:
+            print("En - Predicting images on a model...")
+
+        # TODO - expand dims if only one image
+
+        # TODO - set model to predict mode (cubify and data augmentation turned off)
+        encoded_images = self.model(images, training=False)
+
+        # TODO - reduce dims if only one image
+
+        return encoded_images
 
 
 def main():

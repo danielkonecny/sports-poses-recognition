@@ -78,6 +78,7 @@ class DatasetHandler:
         print(f'DH -- Number of train batches loaded: {tf.data.experimental.cardinality(trn_ds)}.')
         print(f'DH -- Number of validation batches loaded: {tf.data.experimental.cardinality(val_ds)}.')
 
+        # TODO - optimize loading
         """
         Optimization options:
         - prefetch - no significant improvement noticed

@@ -54,7 +54,9 @@ def test():
 
             model = tf.keras.Sequential([
                 tf.keras.Input(shape=(args.steps * args.height, args.cameras * args.width, args.channels)),
-                Cubify((args.height, args.width, args.channels))
+                Cubify((args.height, args.width, args.channels)),
+                tf.keras.layers.RandomFlip("horizontal_and_vertical"),
+                tf.keras.layers.RandomRotation(0.1, fill_mode='nearest')
             ])
             output = model(grid)
 
