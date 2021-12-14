@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 08. 12. 2021
+Date: 13. 12. 2021
 """
 
 from pathlib import Path
@@ -13,39 +13,39 @@ import datetime
 import tensorflow as tf
 from tensorflow.keras import layers
 
+from itertools import combinations
+from math import comb
+import numpy as np
+
 from src.model.Cubify import Cubify
-from src.model.DatasetHandler import DatasetHandler, triplets_in_grid
+from src.model.DatasetHandler import DatasetHandler
 from src.utils.params import parse_arguments
 
 
+def triplets_in_grid(grid_shape):
+    triplet = 3
+    steps = grid_shape[0]
+    cameras = grid_shape[1]
+    triplet_indices = np.empty(((cameras - 1) * steps * comb(cameras, triplet - 1), triplet), dtype=np.int32)
+
+    index = 0
+    for a_p in combinations(range(cameras), triplet - 1):
+        for n in range(cameras, cameras * steps):
+            triplet_indices[index] = [a_p[0], a_p[1], n]
+            index += 1
+
+    return tf.convert_to_tensor(triplet_indices, dtype=tf.int32)
+
+
 @tf.function
-def triplet_loss(anchor, positive, negative, margin=0.01):
-    a_p_distance = tf.math.reduce_sum(tf.math.square(anchor - positive))
-    a_n_distance = tf.math.reduce_sum(tf.math.square(anchor - negative))
-    loss = tf.math.maximum(0., margin + a_p_distance - a_n_distance)
+def triplet_loss(triplets, margin=0.01):
+    a_p_distance = tf.math.reduce_sum(tf.math.square(tf.math.subtract(triplets[:, 0], triplets[:, 1])), axis=1)
+    a_n_distance = tf.math.reduce_sum(tf.math.square(tf.math.subtract(triplets[:, 0], triplets[:, 2])), axis=1)
 
-    if a_p_distance < a_n_distance:
-        accuracy = 1.
-    else:
-        accuracy = 0.
+    loss = tf.math.reduce_sum(tf.math.maximum(0., margin + a_p_distance - a_n_distance))
+    accuracy = tf.math.reduce_mean(tf.cast(tf.math.less(a_p_distance, a_n_distance), tf.float32))
 
-    return tf.math.reduce_mean(loss), accuracy
-
-
-@tf.function
-def tuple_loss(n_tuple, triplet_indices, margin=0.01):
-    loss_sum = accuracy_sum = 0.
-
-    for indices in triplet_indices:
-        anchor = n_tuple[indices[0]]
-        positive = n_tuple[indices[1]]
-        negative = n_tuple[indices[2]]
-        loss, accuracy = triplet_loss(anchor, positive, negative, margin)
-
-        loss_sum += loss
-        accuracy_sum += accuracy
-
-    return loss_sum, accuracy_sum / len(triplet_indices)
+    return loss, accuracy
 
 
 class Encoder:
@@ -125,13 +125,28 @@ class Encoder:
         elif self.verbose:
             print("En -- Checkpoint initialized in ckpts directory.")
 
+    def log_results(self, writer, loss_metrics, acc_metrics, time_metrics):
+        with writer.as_default():
+            tf.summary.scalar('loss', loss_metrics.result(), step=self.ckpt.step.numpy())
+            tf.summary.scalar('accuracy', acc_metrics.result(), step=self.ckpt.step.numpy())
+            tf.summary.scalar('time', time_metrics, step=self.ckpt.step.numpy())
+
+        if self.verbose:
+            print(f"En --- Train: Loss = {loss_metrics.result():.6f},"
+                  f" Accuracy = {acc_metrics.result():7.2%}."
+                  f" Time / Tuple = {time_metrics:.2f} ms.")
+
+        loss_metrics.reset_states()
+        acc_metrics.reset_states()
+
     @tf.function
-    def train_step(self, grid, triplet_indices):
+    def train_step(self, n_tuple, triplet_indices):
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(self.model.get_layer(name='trained').variables)
-            n_tuple = tf.expand_dims(grid, axis=0)
-            n_tuple_encoded = self.model(n_tuple, training=True)
-            loss, accuracy = tuple_loss(n_tuple_encoded, triplet_indices, self.margin)
+            n_tuple_expanded = tf.expand_dims(n_tuple, axis=0)
+            n_tuple_encoded = self.model(n_tuple_expanded, training=True)
+            triplets = tf.gather(n_tuple_encoded, indices=triplet_indices)
+            loss, accuracy = triplet_loss(triplets, self.margin)
 
         trained_layers = [
             self.model.get_layer(name='trained').kernel,
@@ -146,31 +161,19 @@ class Encoder:
     def train_on_batches(self, trn_ds, triplet_indices, subdataset_size):
         start_time = time.perf_counter()
         for batch in trn_ds:
-            for grid in batch:
-                self.train_step(grid, triplet_indices)
+            for n_tuple in batch:
+                self.train_step(n_tuple, triplet_indices)
         end_time = time.perf_counter()
         tuple_train_time = (end_time - start_time) / subdataset_size * 1e3
 
-        with self.train_writer.as_default():
-            tf.summary.scalar('loss', self.trn_loss.result(), step=self.ckpt.step.numpy())
-            tf.summary.scalar('accuracy', self.trn_accuracy.result(), step=self.ckpt.step.numpy())
-            tf.summary.scalar('time', tuple_train_time, step=self.ckpt.step.numpy())
-
-        if self.verbose:
-            print(f"En --- Train: Loss = {self.trn_loss.result():.6f},"
-                  f" Accuracy = {self.trn_accuracy.result():7.2%}."
-                  f" Time / Tuple = {tuple_train_time:.2f} ms.")
-
-        self.trn_loss.reset_states()
-        self.trn_accuracy.reset_states()
+        self.log_results(self.train_writer, self.trn_loss, self.trn_accuracy, tuple_train_time)
 
     @tf.function
-    def val_step(self, grid, triplet_indices):
-        margin = self.margin
-
-        n_tuple = tf.expand_dims(grid, axis=0)
-        n_tuple_encoded = self.model(n_tuple, training=False)
-        loss, accuracy = tuple_loss(n_tuple_encoded, triplet_indices, margin)
+    def val_step(self, n_tuple, triplet_indices):
+        n_tuple_expanded = tf.expand_dims(n_tuple, axis=0)
+        n_tuple_encoded = self.model(n_tuple_expanded, training=False)
+        triplets = tf.gather(n_tuple_encoded, indices=triplet_indices)
+        loss, accuracy = triplet_loss(triplets, self.margin)
 
         self.val_loss(loss / len(triplet_indices))
         self.val_accuracy(accuracy)
@@ -178,23 +181,12 @@ class Encoder:
     def val_on_batches(self, val_ds, triplet_indices, subdataset_size):
         start_time = time.perf_counter()
         for batch in val_ds:
-            for grid in batch:
-                self.val_step(grid, triplet_indices)
+            for n_tuple in batch:
+                self.val_step(n_tuple, triplet_indices)
         end_time = time.perf_counter()
-        tuple_train_time = (end_time - start_time) / subdataset_size * 1e3
+        tuple_val_time = (end_time - start_time) / subdataset_size * 1e3
 
-        with self.val_writer.as_default():
-            tf.summary.scalar('loss', self.val_loss.result(), step=self.ckpt.step.numpy())
-            tf.summary.scalar('accuracy', self.val_accuracy.result(), step=self.ckpt.step.numpy())
-            tf.summary.scalar('time', tuple_train_time, step=self.ckpt.step.numpy())
-
-        if self.verbose:
-            print(f"En --- Validation: Loss = {self.val_loss.result():.6f},"
-                  f" Accuracy = {self.val_accuracy.result():7.2%},"
-                  f" Time / Tuple = {tuple_train_time:.2f} ms.")
-
-        self.val_loss.reset_states()
-        self.val_accuracy.reset_states()
+        self.log_results(self.val_writer, self.val_loss, self.val_accuracy, tuple_val_time)
 
     def fit(self, trn_ds, val_ds, epochs, dataset_size):
         if self.verbose:

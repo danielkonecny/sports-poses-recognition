@@ -3,35 +3,16 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for loading training data and rearranging them for specific training purposes.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 08. 12. 2021
+Date: 13. 12. 2021
 """
 
 from pathlib import Path
 import contextlib
 
-from itertools import combinations
-from math import comb
-
 import tensorflow as tf
-import numpy as np
 import matplotlib.pyplot as plt
 
 from src.utils.params import parse_arguments
-
-
-def triplets_in_grid(grid_shape):
-    triplet = 3
-    steps = grid_shape[0]
-    cameras = grid_shape[1]
-    triplet_indices = np.empty(((cameras - 1) * steps * comb(cameras, triplet - 1), triplet), dtype=np.int32)
-
-    index = 0
-    for a_p in combinations(range(cameras), triplet - 1):
-        for n in range(cameras, cameras * steps):
-            triplet_indices[index] = [a_p[0], a_p[1], n]
-            index += 1
-
-    return triplet_indices
 
 
 class DatasetHandler:
@@ -82,8 +63,10 @@ class DatasetHandler:
                 validation_split=val_split,
                 subset="validation"
             )
-        print(f'DH -- Number of train batches loaded: {tf.data.experimental.cardinality(trn_ds)}.')
-        print(f'DH -- Number of validation batches loaded: {tf.data.experimental.cardinality(val_ds)}.')
+
+        if self.verbose:
+            print(f'DH -- Number of train batches loaded: {tf.data.experimental.cardinality(trn_ds)}.')
+            print(f'DH -- Number of validation batches loaded: {tf.data.experimental.cardinality(val_ds)}.')
 
         trn_ds = trn_ds.shuffle(10000)
 
@@ -130,8 +113,10 @@ class DatasetHandler:
                 validation_split=val_split,
                 subset="validation"
             )
-        print(f'DH -- Number of train batches loaded: {tf.data.experimental.cardinality(trn_ds)}.')
-        print(f'DH -- Number of validation batches loaded: {tf.data.experimental.cardinality(val_ds)}.')
+
+        if self.verbose:
+            print(f'DH -- Number of train batches loaded: {tf.data.experimental.cardinality(trn_ds)}.')
+            print(f'DH -- Number of validation batches loaded: {tf.data.experimental.cardinality(val_ds)}.')
 
         return trn_ds, val_ds
 
