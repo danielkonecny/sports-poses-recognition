@@ -1,4 +1,5 @@
-"""Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
+"""
+Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
 Module for calculating optical flow in videos.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
@@ -7,27 +8,12 @@ Date: 01. 11. 2021
 
 import sys
 import os
-from argparse import ArgumentParser
 from collections import deque
 
 import numpy as np
 import cv2
 
-
-def parse_arguments():
-    parser = ArgumentParser()
-    parser.add_argument(
-        'directory',
-        type=str,
-        help="Path to the directory with videos (without slash at the end).",
-    )
-    parser.add_argument(
-        '-f', '--frame_skip',
-        type=int,
-        default=7,
-        help="Number of frames in between optical flow is calculated."
-    )
-    return parser.parse_args()
+from src.utils.params import parse_arguments
 
 
 def calc_optical_flow(old_frame, new_frame):
@@ -97,7 +83,7 @@ class OpticalFlowCalculator:
 def main():
     args = parse_arguments()
 
-    optical_flow_calc = OpticalFlowCalculator(args.directory, args.frame_skip)
+    optical_flow_calc = OpticalFlowCalculator(args.location, args.frame_skip)
     optical_flow_calc.compute_and_save_flows()
 
 

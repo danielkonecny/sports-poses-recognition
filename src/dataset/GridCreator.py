@@ -1,4 +1,5 @@
-"""Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
+"""
+Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
 Module for providing training data in grids.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
@@ -7,42 +8,15 @@ Date: 01. 11. 2021
 
 
 import os
-from argparse import ArgumentParser
 import re
 
 import numpy as np
 import cv2
 
+from src.utils.params import parse_arguments
+
 
 COMMON_INFO_IDX = 0
-
-
-def parse_arguments():
-    parser = ArgumentParser()
-    parser.add_argument(
-        'directory',
-        type=str,
-        help="Path to the directory with videos and flows (without slash at the end).",
-    )
-    parser.add_argument(
-        '-m', '--move_thresh',
-        type=int,
-        default=80,
-        help="Threshold for detecting movement in flow between 0 and 100."
-    )
-    parser.add_argument(
-        '-s', '--steps',
-        type=int,
-        default=3,
-        help="Number of steps in video used."
-    )
-    parser.add_argument(
-        '-f', '--frame_skip',
-        type=int,
-        default=7,
-        help="Number of frames in between optical flow is calculated."
-    )
-    return parser.parse_args()
 
 
 class GridCreator:
@@ -139,7 +113,7 @@ class GridCreator:
 def main():
     args = parse_arguments()
 
-    grid_creator = GridCreator(args.directory, args.move_thresh, args.steps, args.frame_skip)
+    grid_creator = GridCreator(args.location, args.move_thresh, args.steps, args.frame_skip)
     grid_creator.create_grids()
 
 

@@ -161,7 +161,7 @@ def test():
     args = parse_arguments()
 
     batch_provider = BatchProvider(
-        args.directory,
+        args.location,
         args.steps,
         args.cameras,
         args.height,

@@ -1,4 +1,5 @@
-"""Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
+"""
+Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
 Module for cropping of video to a selected area.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
@@ -9,9 +10,11 @@ Source: select crop area using pygame library
 
 import sys
 import os
-from argparse import ArgumentParser
+
 import numpy as np
 import cv2
+
+from src.utils.params import parse_arguments
 
 import contextlib
 
@@ -19,51 +22,6 @@ with contextlib.redirect_stdout(None):
     import pygame
 
 COMPUTATIONAL_PRECISION = 1e6
-
-
-def parse_arguments():
-    parser = ArgumentParser()
-    parser.add_argument(
-        'video',
-        type=str,
-        help="Path to the video to be cropped.",
-    )
-    parser.add_argument(
-        '-S', '--scene_num',
-        type=int,
-        default=0,
-        help="Number of this dataset scene.",
-    )
-    parser.add_argument(
-        '-V', '--video_num',
-        type=int,
-        default=0,
-        help="Number of this video in a scene.",
-    )
-    parser.add_argument(
-        '-W', '--width',
-        type=int,
-        default=224,
-        help="Width of the resulting video.",
-    )
-    parser.add_argument(
-        '-H', '--height',
-        type=int,
-        default=224,
-        help="height of the resulting video.",
-    )
-    parser.add_argument(
-        '-F', '--framerate',
-        type=int,
-        default=20,
-        help="height of the resulting video.",
-    )
-    parser.add_argument(
-        '-s', '--script',
-        action='store_true',
-        help="When used, videos are not going to be cropped directly but script doing so is going to be created."
-    )
-    return parser.parse_args()
 
 
 def crop_video(crop_command):
@@ -333,7 +291,7 @@ def main():
 
     pygame.init()
 
-    video_cropper = VideoCropper(args.video, args.framerate, args.width, args.height, args.scene_num, args.video_num)
+    video_cropper = VideoCropper(args.location, args.framerate, args.width, args.height, args.scene_num, args.video_num)
     _ = video_cropper.get_image()
     video_cropper.set_crops()
 

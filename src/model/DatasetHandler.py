@@ -125,7 +125,7 @@ def test():
     args = parse_arguments()
 
     dataset_handler = DatasetHandler(
-        args.directory,
+        args.location,
         args.steps,
         args.cameras,
         args.height,

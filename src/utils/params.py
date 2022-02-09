@@ -11,11 +11,27 @@ from argparse import ArgumentParser
 
 def parse_arguments():
     parser = ArgumentParser()
+    # parser.add_argument(
+    #     'directory',
+    #     type=str,
+    #     help="Path to the directory with data (without slash at the end).",
+    # )
+    # parser.add_argument(
+    #     '--video',
+    #     type=str,
+    #     help="Path to the video to be cropped.",
+    # )
+    # parser.add_argument(
+    #     '--file',
+    #     type=str,
+    #     help="Path to optical flow saved as NumPy nd-array in a file.",
+    # )
     parser.add_argument(
-        'directory',
+        'location',
         type=str,
-        help="Path to the directory with grids of images (without slash at the end).",
+        help="Location of the processed data.",
     )
+
     parser.add_argument(
         '-W', '--width',
         type=int,
@@ -35,16 +51,62 @@ def parse_arguments():
         help="Number of channels in used images (e.g. RGB = 3)."
     )
     parser.add_argument(
+        '-F', '--framerate',
+        type=int,
+        default=20,
+        help="height of the resulting video.",
+    )
+    parser.add_argument(
         '-c', '--cameras',
         type=int,
         default=3,
         help="Number of cameras forming the grid of images."
     )
     parser.add_argument(
+        '--scene_num',
+        type=int,
+        default=0,
+        help="Number of this dataset scene.",
+    )
+    parser.add_argument(
+        '--video_num',
+        type=int,
+        default=0,
+        help="Number of this video in a scene.",
+    )
+    parser.add_argument(
+        '-o', '--overlay',
+        type=int,
+        default=1000,
+        help="Number of frames that have to overlay."
+    )
+    parser.add_argument(
+        '-l', '--load',
+        action='store_true',
+        help="Use when optical flow has already been calculated and can only be loaded."
+    )
+    parser.add_argument(
+        '--script',
+        action='store_true',
+        help="When used, videos are not going to be cropped directly but script doing so is going to be created."
+    )
+    parser.add_argument(
         '-s', '--steps',
         type=int,
         default=3,
         help="Number of steps forming the grid of images."
+    )
+    parser.add_argument(
+        '-t', '--move_thresh',
+        type=int,
+        default=80,
+        help="Threshold for detecting movement in flow between 0 and 100."
+    )
+    parser.add_argument(
+        '-f', '--frame_skip',
+        type=int,
+        default=7,
+        help="Number of frames in between optical flow is calculated."
     )
     parser.add_argument(
         '-e', '--epochs',

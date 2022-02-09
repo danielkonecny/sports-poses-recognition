@@ -225,7 +225,7 @@ class Encoder:
 def main():
     args = parse_arguments()
     dataset_handler = DatasetHandler(
-        args.directory,
+        args.location,
         args.steps,
         args.cameras,
         args.height,
@@ -233,7 +233,7 @@ def main():
         args.verbose
     )
     encoder = Encoder(
-        args.directory,
+        args.location,
         args.steps,
         args.cameras,
         args.height,

@@ -1,26 +1,16 @@
-"""Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
+"""
+Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
 Module for analyzing optical flow data from videos.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
 Date: 01. 11. 2021
 """
 
-
-from argparse import ArgumentParser
-
 import numpy as np
 from scipy.stats import normaltest
 from matplotlib import pyplot
 
-
-def parse_arguments():
-    parser = ArgumentParser()
-    parser.add_argument(
-        'file',
-        type=str,
-        help="Path to optical flow saved as NumPy nd-array in a file.",
-    )
-    return parser.parse_args()
+from src.utils.params import parse_arguments
 
 
 def show_info(flow):
@@ -126,7 +116,7 @@ class OpticalFlowAnalyzer:
 def main():
     args = parse_arguments()
 
-    batch_provider = OpticalFlowAnalyzer(args.file)
+    batch_provider = OpticalFlowAnalyzer(args.location)
     batch_provider.analyze()
 
 

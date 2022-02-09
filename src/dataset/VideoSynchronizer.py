@@ -1,13 +1,13 @@
-"""Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
+"""
+Self-Supervised Learning for Recognition of Sports Poses in Image - Master's Thesis Project
 Module for synchronization of multiple videos of the same scene.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 28. 10. 2021
+Date: 9. 2. 2022
 Source: ffmpeg commands
     (https://stackoverflow.com/questions/11552565/vertically-or-horizontally-stack-mosaic-several-videos-using-ffmpeg)
 """
 
-from argparse import ArgumentParser
 import os
 import re
 
@@ -16,32 +16,7 @@ from scipy.stats import pearsonr
 import cv2
 
 import OpticalFlowCalculator
-
-
-def parse_arguments():
-    parser = ArgumentParser()
-    parser.add_argument(
-        'directory',
-        type=str,
-        help="Path to the directory with videos (without slash at the end).",
-    )
-    parser.add_argument(
-        '-o', '--overlay',
-        type=int,
-        default=1000,
-        help="Number of frames that have to overlay."
-    )
-    parser.add_argument(
-        '-l', '--load',
-        action='store_true',
-        help="Use when optical flow has already been calculated and can only be loaded."
-    )
-    parser.add_argument(
-        '-s', '--script',
-        action='store_true',
-        help="When used, videos are not going to be cut directly via ffmpeg but script doing so is going to be created."
-    )
-    return parser.parse_args()
+from src.utils.params import parse_arguments
 
 
 def get_timestamp_from_seconds(seconds):
@@ -197,7 +172,7 @@ class VideoSynchronizer:
 
             print(f"\nUsing flows {self.flow1} and {self.flow2}.")
 
-            # Check if flow1 is shorter then flow2, if not, switch indices.
+            # Check if flow1 is shorter than flow2, if not, switch indices.
             self.check_length()
 
             correlation = self.calc_correlation()
@@ -274,7 +249,7 @@ class VideoSynchronizer:
 def main():
     args = parse_arguments()
 
-    video_synchronizer = VideoSynchronizer(args.directory, args.overlay)
+    video_synchronizer = VideoSynchronizer(args.location, args.overlay)
 
     if args.load:
         video_synchronizer.load_flows()
