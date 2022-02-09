@@ -3,12 +3,13 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for synchronization of multiple videos of the same scene.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 9. 2. 2022
+Date: 09. 02. 2022
 Source: ffmpeg commands
     (https://stackoverflow.com/questions/11552565/vertically-or-horizontally-stack-mosaic-several-videos-using-ffmpeg)
 """
 
 import os
+from pathlib import Path
 import re
 
 import numpy as np
@@ -48,9 +49,8 @@ def create_script(commands):
 
 class VideoSynchronizer:
     def __init__(self, directory, overlay=1000):
-        self.directory = directory
         self.overlay = overlay
-        self.files = []
+        self.videos = list(Path(directory).glob('*.mp4'))
         self.flows = []
         self.fps = []
         self.flow1 = 0
@@ -61,23 +61,19 @@ class VideoSynchronizer:
     def load_flows(self):
         print("Loading flows...")
 
-        for file in os.listdir(self.directory):
-            if file.endswith('.npy'):
-                self.flows.append(np.load(f'{self.directory}/{file}'))
-                self.files.append(file.replace('.npy', ''))
-                print(f"- Flow {file} loaded.")
+        for video in self.videos:
+            self.flows.append(np.load(video.with_suffix(".npy")))
+            print(f"- Flow of video {video} loaded.")
 
     def calculate_flows(self):
         print("Calculating flows...")
 
-        optical_flow_calc = OpticalFlowCalculator.OpticalFlowCalculator(self.directory)
+        optical_flow_calc = OpticalFlowCalculator.OpticalFlowCalculator(self.videos)
 
-        for file in os.listdir(self.directory):
-            if file.endswith('.mp4'):
-                flow = optical_flow_calc.process_video(file)
-                self.flows.append(flow)
-                self.files.append(file.replace('.mp4', ''))
-                print(f"- Flow from video {file} calculated.")
+        for video in self.videos:
+            flow = optical_flow_calc.process_video(video)
+            self.flows.append(flow)
+            print(f"- Flow from video {video} calculated.")
 
     def check_length(self):
         print("Checking length of flows...")
@@ -143,8 +139,8 @@ class VideoSynchronizer:
 
     def get_fps(self):
         print("Getting fps...")
-        for video in self.files:
-            cap = cv2.VideoCapture(f'{self.directory}/{video}.mp4')
+        for video in self.videos:
+            cap = cv2.VideoCapture(str(video.resolve()))
             self.fps.append(cap.get(cv2.CAP_PROP_FPS))
             print(f"- Video {video}.mp4 has {self.fps[-1]} fps.")
 
@@ -163,7 +159,7 @@ class VideoSynchronizer:
         for i in range(len(self.differences)):
             start_time = get_timestamp_from_seconds(self.differences[i] / self.fps[i])
             duration = get_timestamp_from_seconds(self.shortest / self.fps[i])
-            print(f"- Cut video {self.directory}/{self.files[i]}.mp4 from {start_time} for (duration) {duration}.")
+            print(f"- Cut video {self.videos[i]} from {start_time} for (duration) {duration}.")
 
     def synchronize_videos(self):
         for flow_index in range(1, len(self.flows)):
@@ -211,15 +207,15 @@ class VideoSynchronizer:
 
             commands += f'\nffmpeg \\\n'
             commands += f'-ss {start_time} \\\n'
-            commands += f'-i {self.directory}/{self.files[i]}.mp4 \\\n'
+            commands += f'-i {self.videos[i]} \\\n'
             commands += f'-t {duration} \\\n'
             commands += f'-codec:v libx264 \\\n'
-            commands += f'{self.directory}/{self.files[i]}_synced.mp4\n'
+            commands += f'{self.videos[i].parent / (self.videos[i].stem + "_synced" + self.videos[i].suffix)}\n'
 
         if 2 <= len(self.differences) <= 4:
             commands += f'\nffmpeg \\\n'
             for i in range(len(self.differences)):
-                commands += f'-i {self.directory}/{self.files[i]}_synced.mp4 '
+                commands += f'-i {self.videos[i].parent / (self.videos[i].stem + "_synced" + self.videos[i].suffix)} '
             commands += f'\\\n'
 
         if len(self.differences) == 2:
@@ -232,18 +228,18 @@ class VideoSynchronizer:
             commands += f'-map "[v]" \\\n'
 
         if 2 <= len(self.differences) <= 4:
-            output_name = re.sub(r"video\d_normalized", "stacked", f"{self.files[0]}.mp4")
+            output_name = re.sub(r'video\d_normalized', 'stacked', f'{self.videos[0]}')
             commands += f'-codec:v libx264 \\\n'
-            commands += f'{self.directory}/{output_name}\n'
+            commands += f'{output_name}\n'
 
         return commands
 
     def export_flows(self):
         print("Exporting synced flows...")
-        for index in range(len(self.flows)):
-            print(f"- Flow {self.files[index]}_synced.npy exported.")
-            np.save(f'{self.directory}/{self.files[index]}_synced.npy',
-                    self.flows[index][self.differences[index]:self.differences[index] + self.shortest])
+        for i in range(len(self.flows)):
+            print(f'- Flow {self.videos[i].stem + "_synced.npy"} exported.')
+            np.save(f'{self.videos[i].parent / (self.videos[i].stem + "_synced.npy")}',
+                    self.flows[i][self.differences[i]:self.differences[i] + self.shortest])
 
 
 def main():

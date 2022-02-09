@@ -3,13 +3,14 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for cropping of video to a selected area.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 01. 11. 2021
+Date: 09. 02. 2022
 Source: select crop area using pygame library
     (https://stackoverflow.com/questions/6136588/image-cropping-using-python/8696558)
 """
 
 import sys
 import os
+from pathlib import Path
 
 import numpy as np
 import cv2
@@ -40,8 +41,8 @@ def create_script(crop_command):
 
 class VideoCropper:
     def __init__(self, video_path, fps, result_w, result_h, scene_num, video_num):
-        self.video_path = video_path
-        self.directory = os.path.dirname(video_path)
+        self.video_path = Path(video_path)
+        self.directory = self.video_path.parent
 
         self.result_fps = fps
         self.result_w = result_w

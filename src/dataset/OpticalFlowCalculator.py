@@ -3,11 +3,11 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for calculating optical flow in videos.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 01. 11. 2021
+Date: 09. 02. 2022
 """
 
 import sys
-import os
+from pathlib import Path
 from collections import deque
 
 import numpy as np
@@ -31,20 +31,15 @@ def calc_optical_flow(old_frame, new_frame):
 
 
 class OpticalFlowCalculator:
-    def __init__(self, directory: str, frame_skip: int = 7):
-        self.directory = directory
-        self.files = []
+    def __init__(self, files, frame_skip: int = 7):
+        self.files = files
         self.frame_skip = frame_skip
 
-        for file in os.listdir(self.directory):
-            if file.endswith('.mp4'):
-                self.files.append(file)
-
     def compute_and_save_flows(self) -> None:
-        print(f"Processing all files in {self.directory} directory...")
+        print(f"Processing all files in {self.files[0].parent} directory...")
         for file in self.files:
             flow = self.process_video(file)
-            np.save(f'{self.directory}/{file.replace("mp4", "npy")}', flow)
+            np.save(file.with_suffix('.npy'), flow)
             print(f"- Flow calculated and saved, number of frames: {len(flow)}.")
 
     def process_video(self, file):
@@ -52,7 +47,7 @@ class OpticalFlowCalculator:
 
         frame_queue = deque()
 
-        cap = cv2.VideoCapture(f'{self.directory}/{file}')
+        cap = cv2.VideoCapture(str(file.resolve()))
         frame_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         # Read the first frame
@@ -83,7 +78,9 @@ class OpticalFlowCalculator:
 def main():
     args = parse_arguments()
 
-    optical_flow_calc = OpticalFlowCalculator(args.location, args.frame_skip)
+    files = list(Path(args.location).glob('*.mp4'))
+
+    optical_flow_calc = OpticalFlowCalculator(files, args.frame_skip)
     optical_flow_calc.compute_and_save_flows()
 
 
