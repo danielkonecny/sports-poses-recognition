@@ -48,9 +48,8 @@ class OpticalFlowCalculator:
         frame_queue = deque()
 
         cap = cv2.VideoCapture(str(file.resolve()))
-        frame_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # Read the first frame
+        # Read the first couple of frames because of skipping.
         for i in range(self.frame_skip):
             ret, frame = cap.read()
             if not ret:
@@ -58,6 +57,7 @@ class OpticalFlowCalculator:
                 return np.array([])
             frame_queue.append(frame)
 
+        frame_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         video_flow = np.empty((frame_length - self.frame_skip, 4))
 
         for frame_index in range(frame_length - self.frame_skip):
