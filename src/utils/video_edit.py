@@ -7,6 +7,8 @@ Date: 13. 02. 2022
 """
 
 import os
+from pathlib import Path
+from functools import singledispatch
 
 import cv2
 
@@ -22,9 +24,40 @@ def create_script(command):
         script.write(command)
 
 
-def get_seconds_from_frame(video, frame):
-    fps = video.get(cv2.CAP_PROP_FPS)
-    return frame / fps
+@singledispatch
+def get_seconds_from_frame(arg, frame):
+    fps = arg.get(cv2.CAP_PROP_FPS)
+    seconds = frame / fps
+    return seconds
+
+
+@get_seconds_from_frame.register
+def _(arg: int, frame):
+    seconds = frame / arg
+    return seconds
+
+
+@get_seconds_from_frame.register
+def _(arg: cv2.VideoCapture, frame):
+    fps = arg.get(cv2.CAP_PROP_FPS)
+    seconds = frame / fps
+    return seconds
+
+
+@get_seconds_from_frame.register
+def _(arg: str, frame):
+    cap = cv2.VideoCapture(arg)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    seconds = frame / fps
+    return seconds
+
+
+@get_seconds_from_frame.register
+def _(arg: Path, frame):
+    cap = cv2.VideoCapture(str(arg.resolve()))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    seconds = frame / fps
+    return seconds
 
 
 def get_timestamp_from_seconds(seconds):

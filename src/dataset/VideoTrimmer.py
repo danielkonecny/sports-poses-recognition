@@ -20,14 +20,15 @@ import src.utils.video_edit as video_edit
 def on_change(video, video_name, trackbar_value):
     video.set(cv2.CAP_PROP_POS_FRAMES, trackbar_value)
     err, img = video.read()
+    img = cv2.resize(img, (960, 540))
     cv2.imshow(video_name, img)
     pass
 
 
 def select_points(video, video_name):
     print("Select start and end point.\n"
-          "Press Enter to confirm.\n"
-          "Press Space to run the video.\n")
+          "Press Space to run the video.\n"
+          "Then press Enter to confirm.\n")
 
     length = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
     cv2.namedWindow(video_name)
@@ -47,6 +48,7 @@ def select_points(video, video_name):
     video.set(cv2.CAP_PROP_POS_FRAMES, start)
     while video.isOpened():
         err, img = video.read()
+        img = cv2.resize(img, (960, 540))
         if video.get(cv2.CAP_PROP_POS_FRAMES) >= end:
             break
         cv2.imshow(video_name, img)
@@ -57,7 +59,7 @@ def select_points(video, video_name):
     return start, end
 
 
-def get_trim_command(video_path, start, duration):
+def get_trim_command(video_path, start_time, duration):
     """
     ffmpeg command to cut videos:
         ffmpeg
@@ -73,11 +75,11 @@ def get_trim_command(video_path, start, duration):
     print("\nPreparing command to trim the video...")
 
     command = f'\nffmpeg \\\n'
-    command += f'-ss {start} \\\n'
+    command += f'-ss {start_time} \\\n'
     command += f'-i {video_path} \\\n'
     command += f'-t {duration} \\\n'
     command += f'-codec:v libx264 \\\n'
-    command += f'{video_path.parent / (video_path.stem + "_trimmed" + video_path.suffix)}\n'
+    command += f'{video_path.parent / (video_path.stem + "_trimmed.mp4")}\n'
 
     return command
 
@@ -91,8 +93,8 @@ def main():
     video = cv2.VideoCapture(str(video_path.resolve()))
 
     start, end = select_points(video, video_name)
-    start_secs = video_edit.get_seconds_from_frame(video, start)
-    end_secs = video_edit.get_seconds_from_frame(video, end)
+    start_secs = video_edit.get_seconds_from_frame(video_path, start)
+    end_secs = video_edit.get_seconds_from_frame(video_path, end)
     start_time = video_edit.get_timestamp_from_seconds(start_secs)
     duration = video_edit.get_timestamp_from_seconds(end_secs - start_secs)
 

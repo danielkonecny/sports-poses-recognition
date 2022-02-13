@@ -3,48 +3,20 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for synchronization of multiple videos of the same scene.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 09. 02. 2022
+Date: 13. 02. 2022
 Source: ffmpeg commands
     (https://stackoverflow.com/questions/11552565/vertically-or-horizontally-stack-mosaic-several-videos-using-ffmpeg)
 """
 
-import os
 from pathlib import Path
 import re
 
 import numpy as np
 from scipy.stats import pearsonr
-import cv2
 
 import OpticalFlowCalculator
 from src.utils.params import parse_arguments
-
-
-def get_timestamp_from_seconds(seconds):
-    milliseconds = int((seconds % 1) * 1000)
-    hours = 0
-    minutes = 0
-    if seconds > 3600:
-        hours = int(seconds // 3600)
-        seconds %= 3600
-    if seconds > 60:
-        minutes = int(seconds // 60)
-        seconds %= 60
-    return f"{hours:02d}:{minutes:02d}:{int(seconds):02d}.{milliseconds:03d}"
-
-
-def cut_videos(commands):
-    os.system(commands)
-    print("- Videos cut.")
-
-
-def create_script(commands):
-    with open(f'cut_videos.sh', 'w') as script:
-        script.write("# Script automatically created with VideoSynchronizer module.\n")
-        script.write("# Author: Daniel Konecny (xkonec75).\n")
-        script.write(commands)
-
-        print("- Synchronization script created.")
+import src.utils.video_edit as video_edit
 
 
 class VideoSynchronizer:
@@ -52,7 +24,6 @@ class VideoSynchronizer:
         self.overlay = overlay
         self.videos = list(Path(directory).glob('*.mp4'))
         self.flows = []
-        self.fps = []
         self.flow1 = 0
         self.flow2 = 1
         self.differences = [0]
@@ -137,17 +108,7 @@ class VideoSynchronizer:
         else:
             self.differences.append(self.overlay + best_match - len(self.flows[self.flow1]))
 
-    def get_fps(self):
-        print("Getting fps...")
-        for video in self.videos:
-            cap = cv2.VideoCapture(str(video.resolve()))
-            self.fps.append(cap.get(cv2.CAP_PROP_FPS))
-            print(f"- Video {video}.mp4 has {self.fps[-1]} fps.")
-
     def calc_cuts(self):
-        print("\nVideo cutting suggestions:")
-        self.get_fps()
-
         latest = min(self.differences)
         new_lengths = []
         for i in range(len(self.differences)):
@@ -155,11 +116,6 @@ class VideoSynchronizer:
             new_lengths.append(len(self.flows[i]) - self.differences[i])
 
         self.shortest = min(new_lengths)
-
-        for i in range(len(self.differences)):
-            start_time = get_timestamp_from_seconds(self.differences[i] / self.fps[i])
-            duration = get_timestamp_from_seconds(self.shortest / self.fps[i])
-            print(f"- Cut video {self.videos[i]} from {start_time} for (duration) {duration}.")
 
     def synchronize_videos(self):
         for flow_index in range(1, len(self.flows)):
@@ -173,8 +129,6 @@ class VideoSynchronizer:
 
             correlation = self.calc_correlation()
             self.calc_difference(correlation)
-
-        self.calc_cuts()
 
     def get_cut_commands(self):
         """
@@ -198,12 +152,17 @@ class VideoSynchronizer:
         :return: String with constructed ffmpeg command to synchronize and stack the videos.
         """
 
-        print("Preparing commands to cut the videos...")
+        print("\nPreparing commands to cut the videos...")
+        print("Video cutting suggestions:")
         commands = ""
 
         for i in range(len(self.differences)):
-            start_time = get_timestamp_from_seconds(self.differences[i] / self.fps[i])
-            duration = get_timestamp_from_seconds(self.shortest / self.fps[i])
+            start_secs = video_edit.get_seconds_from_frame(self.videos[i], self.differences[i])
+            duration_secs = video_edit.get_seconds_from_frame(self.videos[i], self.shortest)
+            start_time = video_edit.get_timestamp_from_seconds(start_secs)
+            duration = video_edit.get_timestamp_from_seconds(duration_secs)
+
+            print(f"- Cut video {self.videos[i]} from {start_time} for (duration) {duration}.")
 
             commands += f'\nffmpeg \\\n'
             commands += f'-ss {start_time} \\\n'
@@ -253,13 +212,16 @@ def main():
         video_synchronizer.calculate_flows()
 
     video_synchronizer.synchronize_videos()
+    video_synchronizer.calc_cuts()
     video_synchronizer.export_flows()
 
-    commands = video_synchronizer.get_cut_commands()
+    command = video_synchronizer.get_cut_commands()
     if args.script:
-        create_script(commands)
+        video_edit.create_script(command)
+        print("- Synchronization script created.")
     else:
-        cut_videos(commands)
+        video_edit.execute_command(command)
+        print("- Videos synchronized.")
 
 
 if __name__ == "__main__":
