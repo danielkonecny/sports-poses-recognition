@@ -25,10 +25,10 @@ class GridCreator:
         self.directory = Path(directory)
         self.video_paths = list(Path(directory).glob('*.mp4'))
         self.videos = []
-        self.detector = SparseMotionDetector.MotionDetector(directory)
+        self.detector = MotionDetector.MotionDetector(directory)
 
-        for video_name in self.video_paths:
-            self.videos.append(cv2.VideoCapture(str(video_name.resolve())))
+        for video_path in self.video_paths:
+            self.videos.append(cv2.VideoCapture(str(video_path.resolve())))
 
         self.scene = int(re.sub(r"scene(\d+)_video\d_.*", r"\1", self.video_paths[COMMON_INFO_IDX].stem))
         print(f"- Scene number {self.scene} loaded.")
