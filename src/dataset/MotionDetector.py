@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Detects motion in video with sparse optical flow.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 11. 02. 2022
+Date: 13. 02. 2022
 """
 
 import sys
@@ -13,7 +13,6 @@ import numpy as np
 import cv2
 
 from src.utils.params import parse_arguments
-
 
 COMMON_INFO_IDX = 0
 
@@ -37,11 +36,15 @@ def reduce_flow(flow, thresh):
     for i in range(len(flow)):
         summed += flow[i]
         if summed > thresh:
-            indices.append(i + 1)
+            if i + 1 >= len(flow):
+                indices.append(i)
+            else:
+                indices.append(i + 1)
             summed = 0
 
     indices = np.asarray(indices, dtype=np.int64)
     movement = np.add.reduceat(flow, indices)
+
     return indices, movement
 
 
@@ -51,8 +54,6 @@ def get_sparse_flow(video):
     """
     frame_length = int(video.get(cv2.CAP_PROP_FRAME_COUNT)) - 1
     video_flow = np.empty((frame_length,))
-
-    print(f"Frame length: {frame_length}")
 
     # Parameters for ShiTomasi corner detection
     feature_params = dict(maxCorners=100, qualityLevel=0.3, minDistance=7, blockSize=7)
@@ -87,108 +88,56 @@ def get_sparse_flow(video):
         video_flow[frame_index] = calc_avg_move_dist(good_new, good_old)
 
         old_gray = new_gray.copy()
-        p0 = good_new.reshape(-1, 1, 2)
+        if frame_index % 100 == 0:
+            # Get new points to follow because many of the previous ones might have got lost.
+            p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
+        else:
+            p0 = good_new.reshape(-1, 1, 2)
 
     return video_flow
 
 
-def get_movement_index(flow, frame_skip=7, steps=2, move_thresh=80):
-    flow_thresh = np.percentile(flow, move_thresh)
+class MotionDetector:
+    def __init__(self, directory):
+        self.video_paths = list(Path(directory).glob('*.mp4'))
+        self.movements = []
+        self.indices = []
 
-    for index in range(len(flow)):
-        if index + steps > len(flow):
-            break
+    def compute_sparse_flows(self):
+        videos = []
+        frame_length = -1
 
-        # Requires movement above threshold between all steps for all cameras.
-        enough_movement = True
-        for flow_idx in range(len(flow)):
-            for step_idx in range(steps - 1):  # Movement in the last step is not needed.
-                if not flow[index + step_idx] > flow_thresh:
-                    enough_movement = False
+        for video_path in self.video_paths:
+            video = cv2.VideoCapture(str(video_path.resolve()))
+            frame_length = int(video.get(cv2.CAP_PROP_FRAME_COUNT)) - 1
+            videos.append(video)
 
-        if enough_movement:
-            yield index * frame_skip
+        summed_flow = np.zeros((frame_length,))
 
+        for video in videos:
+            flow = np.array(get_sparse_flow(video))
+            summed_flow += flow
 
-def get_frame_from_flow(videos, flows, steps=2, frame_skip=7):
-    count = 0
-    image_channels = 3
-    video_w = int(videos[COMMON_INFO_IDX].get(cv2.CAP_PROP_FRAME_WIDTH))
-    video_h = int(videos[COMMON_INFO_IDX].get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.indices, self.movements = reduce_flow(summed_flow, len(self.video_paths) * 4)
 
-    for index in get_movement_index(flows[0]):
-        grid = np.empty((steps, len(videos), video_w, video_h, image_channels))
-        frame_index = index
-        for step in range(steps):
-            for video_index in range(len(videos)):
-                videos[video_index].set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-                ret, frame = videos[video_index].read()
-                if not ret:
-                    print(f"- Frame {frame_index:05d} from flow does not exist.", file=sys.stderr)
-
-                grid[step][video_index] = frame
-
-            frame_index += frame_skip
-
-        yield count, np.hstack(np.hstack(grid))
-        count += 1
+    def get_movement_index(self, steps=2):
+        indices = []
+        for i in range(len(self.indices) - (steps - 1)):
+            for step in range(steps):
+                indices.append(self.indices[i + step])
+            yield indices
+            indices = []
 
 
-def create_grids_from_flow(videos, flows):
-    print(f"\nExporting grids of images...")
-
-    for count, frames in get_frame_from_flow(videos, flows):
-        cv2.imwrite(f"grid{count:05d}.png", frames)
-        if count % 1 == 0:
-            print(f"- Grid {count:05d} exported.")
-
-
-def get_frame_from_index(videos, indices, steps=2):
-    count = 0
-    image_channels = 3
-    video_w = int(videos[COMMON_INFO_IDX].get(cv2.CAP_PROP_FRAME_WIDTH))
-    video_h = int(videos[COMMON_INFO_IDX].get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-    for i in range(len(indices) - (steps - 1)):
-        grid = np.empty((steps, len(videos), video_w, video_h, image_channels))
-
-        for step in range(steps):
-            frame_index = indices[i + step]
-
-            for video_index in range(len(videos)):
-                videos[video_index].set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-                ret, frame = videos[video_index].read()
-                if not ret:
-                    print(f"- Frame {frame_index:05d} from flow does not exist.", file=sys.stderr)
-
-                grid[step][video_index] = frame
-
-        yield count, np.hstack(np.hstack(grid))
-        count += 1
-
-
-def create_grids_from_indices(videos, indices, steps):
-    print(f"\nExporting grids of images...")
-
-    for count, frames in get_frame_from_index(videos, indices, steps):
-        cv2.imwrite(f"grid{count:05d}.png", frames)
-        if count % 1 == 0:
-            print(f"- Grid {count:05d} exported.")
-
-
-def main():
+def test():
     args = parse_arguments()
 
-    video = cv2.VideoCapture(str(Path(args.location).resolve()))
-    flow = get_sparse_flow(video)
-    print(f"flow: {flow}")
-    indices, movement = reduce_flow(flow, 3)
-    print(f"indices: {indices}")
-    print(f"movement: {movement}")
+    detector = MotionDetector(args.location)
+    detector.compute_sparse_flows()
 
-    # create_grids_from_flow([video], [movement])
-    create_grids_from_indices([video], indices, 6)
+    for i in detector.get_movement_index(3):
+        print(i)
 
 
 if __name__ == "__main__":
-    main()
+    test()
