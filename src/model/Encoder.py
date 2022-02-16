@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 13. 12. 2021
+Date: 16. 02. 2022
 """
 
 from pathlib import Path
@@ -50,7 +50,7 @@ def triplet_loss(triplets, margin=0.01):
 
 class Encoder:
     def __init__(self, directory, steps, cameras, height, width, channels, encoding_dim, margin,
-                 ckpt_dir, restore, verbose=False):
+                 log_dir, ckpt_dir, restore, verbose=False):
         self.directory = Path(directory)
 
         self.steps = steps
@@ -62,10 +62,9 @@ class Encoder:
         self.encoding_dim = encoding_dim
         self.margin = margin
 
-        self.ckpt_dir = str(self.directory / ckpt_dir)
+        self.log_dir = Path(log_dir)
+        self.ckpt_dir = Path(ckpt_dir)
         self.restore = restore
-
-        self.verbose = verbose
 
         self.model = self.optimizer = self.ckpt = self.manager = None
         self.trn_loss = tf.keras.metrics.Mean('trn_loss', dtype=tf.float32)
@@ -75,12 +74,13 @@ class Encoder:
 
         self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         self.train_writer = tf.summary.create_file_writer(
-            str(self.directory / f'logs/{self.current_time}/gradient_tape/train')
+            str(self.log_dir / f'{self.current_time}/gradient_tape/train')
         )
         self.val_writer = tf.summary.create_file_writer(
-            str(self.directory / f'logs/{self.current_time}/gradient_tape/val')
+            str(self.log_dir / f'{self.current_time}/gradient_tape/val')
         )
 
+        self.verbose = verbose
         if self.verbose:
             print("Encoder (En) initialized.")
 
@@ -88,32 +88,36 @@ class Encoder:
         if self.verbose:
             print("En - Creating encoder model.")
 
-        input_image = tf.keras.Input(shape=(self.height * self.steps, self.width * self.cameras, self.channels))
+        net_input = tf.keras.Input(shape=(self.height * self.steps, self.width * self.cameras, self.channels))
 
         "'__call__' method is inherited from 'tf.keras.layers.Layer' and calls defined 'call' method, so no problem."
         # noinspection PyCallingNonCallable
-        cubify = Cubify((self.height, self.width, self.channels))(input_image)
+        cubify = Cubify((self.height, self.width, self.channels))(net_input)
 
         data_augmentation = tf.keras.Sequential([
-            layers.RandomFlip("horizontal_and_vertical"),
-            layers.RandomRotation(0.1, fill_mode='nearest'),
+            layers.RandomFlip("horizontal"),
+            layers.RandomRotation(0.05, fill_mode='nearest'),
         ])(cubify)
 
-        resnet = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet')(data_augmentation)
+        backbone = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet')(data_augmentation)
 
-        head = layers.AveragePooling2D(pool_size=(7, 7))(resnet)
+        head = layers.AveragePooling2D(pool_size=(7, 7))(backbone)
         head = layers.Flatten()(head)
         head = layers.Dense(self.encoding_dim, activation=None, name='trained')(head)
         # Normalize to a vector on a Unit Hypersphere.
         head = layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=1))(head)
 
-        self.model = tf.keras.Model(inputs=input_image, outputs=head, name='encoder')
-        for layer in self.model.layers:
-            layer.trainable = False
-        self.model.get_layer(name='trained').trainable = True
+        self.model = tf.keras.Model(inputs=net_input, outputs=head, name='encoder')
+
+        # Freeze backbone (ResNet50).
+        self.model.layers[3].trainable = False
+
+        # Not necessary when only backbone is frozen.
+        # self.model.get_layer(name='trained').trainable = True
 
         self.optimizer = tf.keras.optimizers.Adam()
 
+    def set_checkpoints(self):
         self.ckpt = tf.train.Checkpoint(step=tf.Variable(0, dtype=tf.int64), optimizer=self.optimizer, net=self.model)
         self.manager = tf.train.CheckpointManager(self.ckpt, self.ckpt_dir, max_to_keep=5)
 
@@ -125,35 +129,31 @@ class Encoder:
         elif self.verbose:
             print("En -- Checkpoint initialized in ckpts directory.")
 
-    def log_results(self, writer, loss_metrics, acc_metrics, time_metrics):
+    def log_results(self, writer, loss_metrics, acc_metrics, time_metrics, is_train=True):
         with writer.as_default():
             tf.summary.scalar('loss', loss_metrics.result(), step=self.ckpt.step.numpy())
             tf.summary.scalar('accuracy', acc_metrics.result(), step=self.ckpt.step.numpy())
             tf.summary.scalar('time', time_metrics, step=self.ckpt.step.numpy())
 
         if self.verbose:
-            print(f"En --- Train: Loss = {loss_metrics.result():.6f},"
+            print(f"En --- {'Train' if is_train else 'Val'}:"
+                  f" Loss = {loss_metrics.result():.6f},"
                   f" Accuracy = {acc_metrics.result():7.2%}."
-                  f" Time / Tuple = {time_metrics:.2f} ms.")
+                  f" Time/Tuple = {time_metrics:.2f} ms.")
 
         loss_metrics.reset_states()
         acc_metrics.reset_states()
 
     @tf.function
     def train_step(self, n_tuple, triplet_indices):
-        with tf.GradientTape(watch_accessed_variables=False) as tape:
-            tape.watch(self.model.get_layer(name='trained').variables)
+        with tf.GradientTape() as tape:
             n_tuple_expanded = tf.expand_dims(n_tuple, axis=0)
             n_tuple_encoded = self.model(n_tuple_expanded, training=True)
             triplets = tf.gather(n_tuple_encoded, indices=triplet_indices)
             loss, accuracy = triplet_loss(triplets, self.margin)
 
-        trained_layers = [
-            self.model.get_layer(name='trained').kernel,
-            self.model.get_layer(name='trained').bias
-        ]
-        gradient = tape.gradient(loss, trained_layers)
-        self.optimizer.apply_gradients(zip(gradient, trained_layers))
+        gradients = tape.gradient(loss, self.model.trainable_weights)
+        self.optimizer.apply_gradients(zip(gradients, self.model.trainable_weights))
 
         self.trn_loss(loss / len(triplet_indices))
         self.trn_accuracy(accuracy)
@@ -186,7 +186,7 @@ class Encoder:
         end_time = time.perf_counter()
         tuple_val_time = (end_time - start_time) / subdataset_size * 1e3
 
-        self.log_results(self.val_writer, self.val_loss, self.val_accuracy, tuple_val_time)
+        self.log_results(self.val_writer, self.val_loss, self.val_accuracy, tuple_val_time, False)
 
     def fit(self, trn_ds, val_ds, epochs, dataset_size):
         if self.verbose:
@@ -241,11 +241,16 @@ def main():
         args.channels,
         args.encoding_dim,
         args.margin,
+        args.log_dir,
         args.ckpt_dir,
         args.restore,
         args.verbose
     )
     encoder.create_model()
+    encoder.set_checkpoints()
+
+    # encoder.model.summary()
+    # encoder.model.layers[3].summary()
 
     trn_ds, val_ds = dataset_handler.get_dataset_generators(args.batch_size, args.val_split)
     dataset_size = dataset_handler.get_dataset_size()

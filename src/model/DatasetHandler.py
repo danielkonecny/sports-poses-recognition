@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for loading training data and rearranging them for specific training purposes.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 13. 12. 2021
+Date: 16. 02. 2022
 """
 
 from pathlib import Path
@@ -30,7 +30,7 @@ class DatasetHandler:
             print("Dataset Handler (DH) initialized.")
 
     def get_dataset_size(self, val_split=0.2):
-        path = Path(self.directory / "grids")
+        path = Path(self.directory)
         count = len(list(path.glob('*.png')))
 
         trn_count = int(round((1 - val_split) * count))
@@ -44,7 +44,7 @@ class DatasetHandler:
 
         with contextlib.redirect_stdout(None):
             trn_ds = tf.keras.utils.image_dataset_from_directory(
-                self.directory / "grids",
+                self.directory,
                 labels=None,
                 label_mode=None,
                 batch_size=batch_size,
@@ -54,7 +54,7 @@ class DatasetHandler:
                 subset="training"
             )
             val_ds = tf.keras.utils.image_dataset_from_directory(
-                self.directory / "grids",
+                self.directory,
                 labels=None,
                 label_mode=None,
                 batch_size=batch_size,
@@ -92,7 +92,7 @@ class DatasetHandler:
 
         with contextlib.redirect_stdout(None):
             trn_ds = tf.keras.utils.image_dataset_from_directory(
-                self.directory / "grids",
+                self.directory,
                 labels=None,
                 label_mode=None,
                 batch_size=batch_size,
@@ -103,7 +103,7 @@ class DatasetHandler:
                 subset="training"
             )
             val_ds = tf.keras.utils.image_dataset_from_directory(
-                self.directory / "grids",
+                self.directory,
                 labels=None,
                 label_mode=None,
                 batch_size=batch_size,

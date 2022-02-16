@@ -11,27 +11,11 @@ from argparse import ArgumentParser
 
 def parse_arguments():
     parser = ArgumentParser()
-    # parser.add_argument(
-    #     'directory',
-    #     type=str,
-    #     help="Path to the directory with data (without slash at the end).",
-    # )
-    # parser.add_argument(
-    #     '--video',
-    #     type=str,
-    #     help="Path to the video to be cropped.",
-    # )
-    # parser.add_argument(
-    #     '--file',
-    #     type=str,
-    #     help="Path to optical flow saved as NumPy nd-array in a file.",
-    # )
     parser.add_argument(
         'location',
         type=str,
         help="Location of the processed data.",
     )
-
     parser.add_argument(
         '-W', '--width',
         type=int,
@@ -69,10 +53,10 @@ def parse_arguments():
         help="Number of this dataset scene.",
     )
     parser.add_argument(
-        '--video_num',
+        '--cam_num',
         type=int,
         default=0,
-        help="Number of this video in a scene.",
+        help="Number of this camera in a scene.",
     )
     parser.add_argument(
         '-o', '--overlay',
@@ -147,7 +131,13 @@ def parse_arguments():
         '--ckpt_dir',
         type=str,
         default='ckpts',
-        help="Path to directory with checkpoints created under the directory provided in the first argument."
+        help="Path to directory to restore (if --restore) and store checkpoints."
+    )
+    parser.add_argument(
+        '--log_dir',
+        type=str,
+        default='logs',
+        help="Path to directory where logs will be stored."
     )
     parser.add_argument(
         '-v', '--verbose',
