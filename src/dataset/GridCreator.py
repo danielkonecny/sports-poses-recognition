@@ -30,7 +30,7 @@ class GridCreator:
         for video_path in self.video_paths:
             self.videos.append(cv2.VideoCapture(str(video_path.resolve())))
 
-        self.scene = int(re.sub(r"scene(\d+)_video\d_.*", r"\1", self.video_paths[COMMON_INFO_IDX].stem))
+        self.scene = int(re.sub(r"scene(\d+)_cam\d_.*", r"\1", self.video_paths[COMMON_INFO_IDX].stem))
         print(f"- Scene number {self.scene} loaded.")
 
         self.steps = steps

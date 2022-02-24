@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Comparison of different methods for motion detection in video.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 10. 02. 2022
+Date: 24. 02. 2022
 """
 
 import sys
@@ -64,6 +64,8 @@ def get_dense_flow(video, frame_skip):
 
 
 def lucas_kanade_method(cap):
+    frame_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) - 1
+
     # Parameters for ShiTomasi corner detection
     feature_params = dict(maxCorners=100, qualityLevel=0.3, minDistance=7, blockSize=7)
 
@@ -85,7 +87,7 @@ def lucas_kanade_method(cap):
     # Create a mask image for drawing purposes
     mask = np.zeros_like(old_frame)
 
-    while True:
+    for frame_index in range(frame_length):
         # Read new frame
         ret, frame = cap.read()
         if not ret:
@@ -115,8 +117,12 @@ def lucas_kanade_method(cap):
             break
 
         # Update the previous frame and previous points
-        old_gray = frame_gray.copy()
-        p0 = good_new.reshape(-1, 1, 2)
+        print(f"Length {len(good_new)}")
+        if len(good_new) < 7:
+            # Get new points to follow because many of the previous ones might have got lost.
+            p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
+        else:
+            p0 = good_new.reshape(-1, 1, 2)
 
 
 def main():

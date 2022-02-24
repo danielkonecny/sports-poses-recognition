@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Detects motion in video with sparse optical flow.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 13. 02. 2022
+Date: 24. 02. 2022
 """
 
 import sys
@@ -17,14 +17,25 @@ from src.utils.params import parse_arguments
 COMMON_INFO_IDX = 0
 
 
-def calc_avg_move_dist(good_new, good_old):
-    dist_sum = dist_count = 0
+def calc_move_dist(good_new, good_old):
+    dists = []
+    dist_count = 0
 
     for i, (new, old) in enumerate(zip(good_new, good_old)):
         a, b = new.ravel()
         c, d = old.ravel()
-        dist_sum = np.linalg.norm([a - c, b - d])
+        dist = np.linalg.norm([a - c, b - d])
+        dists.append(dist)
         dist_count += 1
+
+    dists = np.array(dists)
+
+    if len(good_new) > 5:
+        dist_count = 5
+        indices = np.argpartition(dists, -dist_count)[-dist_count:]
+        dist_sum = dists[indices].sum()
+    else:
+        dist_sum = np.sum(dists)
 
     return dist_sum / dist_count
 
@@ -70,6 +81,12 @@ def get_sparse_flow(video):
     old_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
 
+    orig_num_points = len(p0)
+    if orig_num_points >= 5:
+        skip = False
+    else:
+        skip = True
+
     for frame_index in range(frame_length):
         # Read the next frame
         ret, new_frame = video.read()
@@ -78,21 +95,39 @@ def get_sparse_flow(video):
             break
         new_gray = cv2.cvtColor(new_frame, cv2.COLOR_BGR2GRAY)
 
-        # Calculate Optical Flow
-        p1, st, _ = cv2.calcOpticalFlowPyrLK(old_gray, new_gray, p0, None, **lk_params)
+        # Skip the motion detection when less than 5 points monitored.
+        if not skip:
+            # Calculate Optical Flow
+            p1, st, _ = cv2.calcOpticalFlowPyrLK(old_gray, new_gray, p0, None, **lk_params)
 
-        # Select good points
-        good_new = p1[st == 1]
-        good_old = p0[st == 1]
+            # Select good points
+            good_new = p1[st == 1]
+            good_old = p0[st == 1]
 
-        video_flow[frame_index] = calc_avg_move_dist(good_new, good_old)
+            video_flow[frame_index] = calc_move_dist(good_new, good_old)
 
-        old_gray = new_gray.copy()
-        if frame_index % 100 == 0:
-            # Get new points to follow because many of the previous ones might have got lost.
-            p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
+            old_gray = new_gray.copy()
+
+            if len(good_new) <= orig_num_points - 5:
+                # Get new points to follow because number of the previous ones got lost.
+                p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
+
+                orig_num_points = len(p0)
+                print(f"Lost 5 or more points, recalculating again. Now loaded: {orig_num_points} points.")
+                if orig_num_points >= 5:
+                    skip = False
+                else:
+                    skip = True
+            else:
+                p0 = good_new.reshape(-1, 1, 2)
         else:
-            p0 = good_new.reshape(-1, 1, 2)
+            old_gray = new_gray.copy()
+            p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
+
+            orig_num_points = len(p0)
+            print(f"Lost 5 or more points, recalculating again. Now loaded: {orig_num_points} points.")
+            if orig_num_points >= 5:
+                skip = False
 
     return video_flow
 
@@ -118,7 +153,7 @@ class MotionDetector:
             flow = np.array(get_sparse_flow(video))
             summed_flow += flow
 
-        self.indices, self.movements = reduce_flow(summed_flow, len(self.video_paths) * 4)
+        self.indices, self.movements = reduce_flow(summed_flow, len(self.video_paths) * 20)
 
     def get_movement_index(self, steps=2):
         indices = []
