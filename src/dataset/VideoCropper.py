@@ -26,7 +26,7 @@ COMPUTATIONAL_PRECISION = 1e6
 
 
 class VideoCropper:
-    def __init__(self, video_path, fps, result_w, result_h, scene_num, video_num):
+    def __init__(self, video_path, fps, result_w, result_h, scene_num, cam_num):
         self.video_path = Path(video_path)
         self.directory = self.video_path.parent
 
@@ -42,7 +42,7 @@ class VideoCropper:
         self.ratio = int(self.result_w / self.result_h * COMPUTATIONAL_PRECISION)
 
         self.scene_num = scene_num
-        self.video_num = video_num
+        self.cam_num = cam_num
 
         self.px = None
         self.screen = None
@@ -268,7 +268,7 @@ class VideoCropper:
         crop_command += f'scale={self.result_w}:{self.result_h}, \\\n'
         crop_command += f'fps={self.result_fps}" \\\n'
         crop_command += f'-an \\\n'
-        crop_command += f'{self.directory}/scene{self.scene_num:03d}_video{self.video_num}_normalized.mp4\n'
+        crop_command += f'{self.directory}/scene{self.scene_num:03d}_cam{self.cam_num}_normalized.mp4\n'
 
         return crop_command
 
@@ -278,7 +278,7 @@ def main():
 
     pygame.init()
 
-    video_cropper = VideoCropper(args.location, args.framerate, args.width, args.height, args.scene_num, args.video_num)
+    video_cropper = VideoCropper(args.location, args.framerate, args.width, args.height, args.scene_num, args.cam_num)
     _ = video_cropper.get_image()
     video_cropper.set_crops()
 

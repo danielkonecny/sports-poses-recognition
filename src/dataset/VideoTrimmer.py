@@ -55,6 +55,7 @@ def select_points(video, video_name):
         k = cv2.waitKey(10) & 0xff
         if k == 13:
             break
+    cv2.destroyAllWindows()
 
     return start, end
 

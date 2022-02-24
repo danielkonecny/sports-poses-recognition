@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for synchronization of multiple videos of the same scene.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 13. 02. 2022
+Date: 24. 02. 2022
 Source: ffmpeg commands
     (https://stackoverflow.com/questions/11552565/vertically-or-horizontally-stack-mosaic-several-videos-using-ffmpeg)
 """
@@ -99,9 +99,20 @@ class VideoSynchronizer:
         return correlation
 
     def calc_difference(self, correlation):
-        sum_correlation = np.abs(correlation).sum(axis=1)
+        std_thresh = 10
+        number_of_compared = 10
 
-        best_match = np.argpartition(sum_correlation, -1)[-1:][0]
+        sum_correlation = np.abs(correlation).sum(axis=1)
+        matches = sum_correlation.argsort()[-number_of_compared:]
+        print(f"Found matches on indices: {matches[::-1]}, with standard deviation: {np.std(matches)}.")
+
+        while np.std(matches) > std_thresh:
+            print("Synchronization might fail due to not precise correlation - cleaning of results.")
+            matches = matches[abs(matches - matches.mean()) <= matches.std()]
+            print(f"Cleaned matches are on indices: {matches[::-1]}, with standard deviation: {np.std(matches)}.")
+
+        best_match = matches[-1]
+        print(f"Best match: {best_match}")
 
         if self.flow1 > self.flow2:  # Flows were switched.
             self.differences.append(-(self.overlay + best_match - len(self.flows[self.flow1])))
@@ -187,7 +198,7 @@ class VideoSynchronizer:
             commands += f'-map "[v]" \\\n'
 
         if 2 <= len(self.differences) <= 4:
-            output_name = re.sub(r'video\d_normalized', 'stacked', f'{self.videos[0]}')
+            output_name = re.sub(r'cam\d_normalized', 'stacked', f'{self.videos[0]}')
             commands += f'-codec:v libx264 \\\n'
             commands += f'{output_name}\n'
 
