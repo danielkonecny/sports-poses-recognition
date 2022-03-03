@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Detects motion in video with sparse optical flow.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 24. 02. 2022
+Date: 03. 03. 2022
 """
 
 import sys
@@ -15,6 +15,8 @@ import cv2
 from src.utils.params import parse_arguments
 
 COMMON_INFO_IDX = 0
+POINTS_FOUND_THRESH = 5
+POINTS_LOST_THRESH = 5
 
 
 def calc_move_dist(good_new, good_old):
@@ -64,7 +66,7 @@ def get_sparse_flow(video):
     Source: https://learnopencv.com/optical-flow-in-opencv/
     """
     frame_length = int(video.get(cv2.CAP_PROP_FRAME_COUNT)) - 1
-    video_flow = np.empty((frame_length,))
+    video_flow = np.zeros((frame_length,))
 
     # Parameters for ShiTomasi corner detection
     feature_params = dict(maxCorners=100, qualityLevel=0.3, minDistance=7, blockSize=7)
@@ -78,14 +80,10 @@ def get_sparse_flow(video):
         print("- No frame in the video.", file=sys.stderr)
         return np.array([])
 
+    print("Initial loading of points.")
     old_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
-
     orig_num_points = len(p0)
-    if orig_num_points >= 5:
-        skip = False
-    else:
-        skip = True
 
     for frame_index in range(frame_length):
         # Read the next frame
@@ -95,8 +93,8 @@ def get_sparse_flow(video):
             break
         new_gray = cv2.cvtColor(new_frame, cv2.COLOR_BGR2GRAY)
 
-        # Skip the motion detection when less than 5 points monitored.
-        if not skip:
+        # Skip the motion detection when less than POINTS_FOUND_THRESH points monitored.
+        if orig_num_points >= POINTS_FOUND_THRESH:
             # Calculate Optical Flow
             p1, st, _ = cv2.calcOpticalFlowPyrLK(old_gray, new_gray, p0, None, **lk_params)
 
@@ -107,27 +105,17 @@ def get_sparse_flow(video):
             video_flow[frame_index] = calc_move_dist(good_new, good_old)
 
             old_gray = new_gray.copy()
-
-            if len(good_new) <= orig_num_points - 5:
-                # Get new points to follow because number of the previous ones got lost.
+            if len(good_new) <= orig_num_points - POINTS_LOST_THRESH:
+                print(f"Lost {POINTS_LOST_THRESH} or more points.")
                 p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
-
                 orig_num_points = len(p0)
-                print(f"Lost 5 or more points, recalculating again. Now loaded: {orig_num_points} points.")
-                if orig_num_points >= 5:
-                    skip = False
-                else:
-                    skip = True
             else:
                 p0 = good_new.reshape(-1, 1, 2)
         else:
+            print(f"Have less than {POINTS_FOUND_THRESH} points.")
             old_gray = new_gray.copy()
             p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
-
             orig_num_points = len(p0)
-            print(f"Lost 5 or more points, recalculating again. Now loaded: {orig_num_points} points.")
-            if orig_num_points >= 5:
-                skip = False
 
     return video_flow
 
