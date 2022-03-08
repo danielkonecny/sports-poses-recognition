@@ -96,7 +96,13 @@ def parse_arguments():
         '-e', '--epochs',
         type=int,
         default=10,
-        help="Number of epochs to be performed on a dataset."
+        help="Number of epochs to be performed on a dataset for fitting."
+    )
+    parser.add_argument(
+        '--fine_tune',
+        type=int,
+        default=10,
+        help="Number of epochs to be performed on a dataset for fine-tuning."
     )
     parser.add_argument(
         '-b', '--batch_size',

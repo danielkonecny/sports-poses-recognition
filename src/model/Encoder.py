@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 16. 02. 2022
+Date: 08. 03. 2022
 """
 
 from pathlib import Path
@@ -99,6 +99,7 @@ class Encoder:
             layers.RandomRotation(0.05, fill_mode='nearest'),
         ])(cubify)
 
+        # backbone = tf.keras.applications.mobilenet.MobileNet(include_top=False, weights='imagenet')(data_augmentation)
         backbone = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet')(data_augmentation)
 
         head = layers.AveragePooling2D(pool_size=(7, 7))(backbone)
@@ -119,7 +120,7 @@ class Encoder:
 
     def set_checkpoints(self):
         self.ckpt = tf.train.Checkpoint(step=tf.Variable(0, dtype=tf.int64), optimizer=self.optimizer, net=self.model)
-        self.manager = tf.train.CheckpointManager(self.ckpt, self.ckpt_dir, max_to_keep=5)
+        self.manager = tf.train.CheckpointManager(self.ckpt, self.ckpt_dir, max_to_keep=100)
 
         if self.restore:
             self.ckpt.restore(self.manager.latest_checkpoint)
@@ -130,19 +131,24 @@ class Encoder:
             print("En -- Checkpoint initialized in ckpts directory.")
 
     def log_results(self, writer, loss_metrics, acc_metrics, time_metrics, is_train=True):
+        loss = loss_metrics.result()
+        acc = acc_metrics.result()
+
         with writer.as_default():
-            tf.summary.scalar('loss', loss_metrics.result(), step=self.ckpt.step.numpy())
-            tf.summary.scalar('accuracy', acc_metrics.result(), step=self.ckpt.step.numpy())
+            tf.summary.scalar('loss', loss, step=self.ckpt.step.numpy())
+            tf.summary.scalar('accuracy', acc, step=self.ckpt.step.numpy())
             tf.summary.scalar('time', time_metrics, step=self.ckpt.step.numpy())
 
         if self.verbose:
             print(f"En --- {'Train' if is_train else 'Val'}:"
-                  f" Loss = {loss_metrics.result():.6f},"
-                  f" Accuracy = {acc_metrics.result():7.2%}."
+                  f" Loss = {loss:.6f},"
+                  f" Accuracy = {acc:7.2%}."
                   f" Time/Tuple = {time_metrics:.2f} ms.")
 
         loss_metrics.reset_states()
         acc_metrics.reset_states()
+
+        return loss, acc
 
     @tf.function
     def train_step(self, n_tuple, triplet_indices):
@@ -166,7 +172,9 @@ class Encoder:
         end_time = time.perf_counter()
         tuple_train_time = (end_time - start_time) / subdataset_size * 1e3
 
-        self.log_results(self.train_writer, self.trn_loss, self.trn_accuracy, tuple_train_time)
+        loss, acc = self.log_results(self.train_writer, self.trn_loss, self.trn_accuracy, tuple_train_time)
+
+        return loss, acc
 
     @tf.function
     def val_step(self, n_tuple, triplet_indices):
@@ -186,27 +194,56 @@ class Encoder:
         end_time = time.perf_counter()
         tuple_val_time = (end_time - start_time) / subdataset_size * 1e3
 
-        self.log_results(self.val_writer, self.val_loss, self.val_accuracy, tuple_val_time, False)
+        loss, acc = self.log_results(self.val_writer, self.val_loss, self.val_accuracy, tuple_val_time, False)
+
+        return loss, acc
 
     def fit(self, trn_ds, val_ds, epochs, dataset_size):
         if self.verbose:
-            print("En - Fitting the model on the training dataset...")
+            print("En - Fitting the model...")
+
+        best_acc = 0
+        best_epoch = -1
+        best_path = ""
 
         triplet_indices = triplets_in_grid((self.steps, self.cameras))
 
-        for _ in range(epochs):
+        for index in range(epochs):
             if self.verbose:
                 print(f"En -- Epoch {self.ckpt.step.numpy() + 1:02d}.")
 
             self.train_on_batches(trn_ds, triplet_indices, dataset_size[0])
-            self.val_on_batches(val_ds, triplet_indices, dataset_size[1])
+            _, accuracy = self.val_on_batches(val_ds, triplet_indices, dataset_size[1])
 
             save_path = self.manager.save()
 
             self.ckpt.step.assign_add(1)
 
+            if accuracy > best_acc:
+                best_epoch = index
+                best_acc = accuracy
+                best_path = save_path
+
             if self.verbose:
                 print(f"En --- Checkpoint saved at {save_path}.")
+
+        return best_epoch, best_path
+
+    def fine_tune(self, trn_ds, val_ds, epochs, dataset_size, best_path=None):
+        if self.verbose:
+            print("En - Fine tuning the model...")
+
+        if best_path is not None:
+            if self.verbose:
+                print(f"En -- Restored best model from path '{best_path}'.")
+            self.ckpt.restore(best_path)
+
+        self.model.layers[3].trainable = True
+        self.optimizer = tf.keras.optimizers.Adam(1e-5)
+
+        best_epoch, best_path = self.fit(trn_ds, val_ds, epochs, dataset_size)
+
+        return best_epoch, best_path
 
     def predict(self, images):
         if self.verbose:
@@ -249,13 +286,21 @@ def main():
     encoder.create_model()
     encoder.set_checkpoints()
 
+    # model = tf.keras.applications.mobilenet.MobileNet(
+    #     input_shape=None, alpha=1.0, depth_multiplier=1, dropout=0.001,
+    #     include_top=True, weights='imagenet', input_tensor=None, pooling=None,
+    #     classes=1000, classifier_activation='softmax'
+    # )
+    # model.summary()
+
     # encoder.model.summary()
     # encoder.model.layers[3].summary()
 
     trn_ds, val_ds = dataset_handler.get_dataset_generators(args.batch_size, args.val_split)
     dataset_size = dataset_handler.get_dataset_size()
 
-    encoder.fit(trn_ds, val_ds, args.epochs, dataset_size)
+    _, best_path = encoder.fit(trn_ds, val_ds, args.epochs, dataset_size)
+    encoder.fine_tune(trn_ds, val_ds, args.epochs, dataset_size, best_path)
 
 
 if __name__ == "__main__":
