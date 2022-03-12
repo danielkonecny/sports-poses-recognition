@@ -124,6 +124,7 @@ class Encoder:
 
         if self.restore:
             self.ckpt.restore(self.manager.latest_checkpoint)
+            self.ckpt.step.assign_add(1)
 
         if self.verbose and self.restore and self.manager.latest_checkpoint:
             print(f"En -- Checkpoint restored from {self.manager.latest_checkpoint}")
@@ -234,9 +235,10 @@ class Encoder:
             print("En - Fine tuning the model...")
 
         if best_path is not None:
+            self.ckpt.restore(best_path)
+            self.ckpt.step.assign_add(1)
             if self.verbose:
                 print(f"En -- Restored best model from path '{best_path}'.")
-            self.ckpt.restore(best_path)
 
         self.model.layers[3].trainable = True
         self.optimizer = tf.keras.optimizers.Adam(1e-5)
@@ -300,7 +302,7 @@ def main():
     dataset_size = dataset_handler.get_dataset_size()
 
     _, best_path = encoder.fit(trn_ds, val_ds, args.epochs, dataset_size)
-    encoder.fine_tune(trn_ds, val_ds, args.epochs, dataset_size, best_path)
+    encoder.fine_tune(trn_ds, val_ds, args.fine_tune, dataset_size, best_path)
 
 
 if __name__ == "__main__":
