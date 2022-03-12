@@ -8,6 +8,7 @@ Date: 03. 03. 2022
 
 import sys
 from pathlib import Path
+from pprint import pprint
 
 import numpy as np
 import cv2
@@ -20,26 +21,34 @@ POINTS_LOST_THRESH = 5
 
 
 def calc_move_dist(good_new, good_old):
-    dists = []
-    dist_count = 0
+    dists = np.empty((len(good_new),))
+    m = np.empty((2, len(good_new)))
 
     for i, (new, old) in enumerate(zip(good_new, good_old)):
         a, b = new.ravel()
         c, d = old.ravel()
-        dist = np.linalg.norm([a - c, b - d])
-        dists.append(dist)
-        dist_count += 1
+        m[0][i] = a - c
+        m[1][i] = b - d
+        dists[i] = np.linalg.norm([a - c, b - d])
 
-    dists = np.array(dists)
+    point_move_thresh = np.where(dists > 2)
+    print(f"Thresh: {point_move_thresh}")
 
-    if len(good_new) > 5:
-        dist_count = 5
-        indices = np.argpartition(dists, -dist_count)[-dist_count:]
-        dist_sum = dists[indices].sum()
+    if np.sum(point_move_thresh) > 0:
+        average = np.mean(dists[point_move_thresh])
+
+        print(f"Matrix: {m}")
+        m = np.squeeze(m[:, point_move_thresh], axis=1)
+        print(f"Matrix: {m}")
+        d = m.T @ m
+        norm = (m * m).sum(0, keepdims=True) ** .5
+        similarity_matrix = d / norm / norm.T
+        print(f"Similarity mat: {similarity_matrix}")
+
     else:
-        dist_sum = np.sum(dists)
+        average = 0
 
-    return dist_sum / dist_count
+    return average
 
 
 def reduce_flow(flow, thresh):
@@ -68,6 +77,8 @@ def get_sparse_flow(video):
     frame_length = int(video.get(cv2.CAP_PROP_FRAME_COUNT)) - 1
     video_flow = np.zeros((frame_length,))
 
+    print(f"-- Loaded video with {frame_length} frames.")
+
     # Parameters for ShiTomasi corner detection
     feature_params = dict(maxCorners=100, qualityLevel=0.3, minDistance=7, blockSize=7)
 
@@ -77,10 +88,10 @@ def get_sparse_flow(video):
     # Read the first frame.
     ret, frame = video.read()
     if not ret:
-        print("- No frame in the video.", file=sys.stderr)
+        print("--- No frame in the video.", file=sys.stderr)
         return np.array([])
 
-    print("Initial loading of points.")
+    print("-- Initial loading of points.")
     old_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
     orig_num_points = len(p0)
@@ -89,7 +100,7 @@ def get_sparse_flow(video):
         # Read the next frame
         ret, new_frame = video.read()
         if not ret:
-            print("- Video length in frames incorrectly computed.", file=sys.stderr)
+            print("--- Video length in frames incorrectly computed.", file=sys.stderr)
             break
         new_gray = cv2.cvtColor(new_frame, cv2.COLOR_BGR2GRAY)
 
@@ -106,13 +117,13 @@ def get_sparse_flow(video):
 
             old_gray = new_gray.copy()
             if len(good_new) <= orig_num_points - POINTS_LOST_THRESH:
-                print(f"Lost {POINTS_LOST_THRESH} or more points.")
+                print(f"--- Lost {POINTS_LOST_THRESH} or more points.")
                 p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
                 orig_num_points = len(p0)
             else:
                 p0 = good_new.reshape(-1, 1, 2)
         else:
-            print(f"Have less than {POINTS_FOUND_THRESH} points.")
+            print(f"--- Have less than {POINTS_FOUND_THRESH} points.")
             old_gray = new_gray.copy()
             p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
             orig_num_points = len(p0)
@@ -137,11 +148,12 @@ class MotionDetector:
 
         summed_flow = np.zeros((frame_length,))
 
-        for video in videos:
+        for i, video in enumerate(videos):
+            print(f"- Video {i} loaded.")
             flow = np.array(get_sparse_flow(video))
             summed_flow += flow
 
-        self.indices, self.movements = reduce_flow(summed_flow, len(self.video_paths) * 20)
+        self.indices, self.movements = reduce_flow(summed_flow, len(self.video_paths) * 30)
 
     def get_movement_index(self, steps=2):
         indices = []
