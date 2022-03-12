@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for providing training data in grids.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 13. 02. 2022
+Date: 12. 03. 2022
 """
 
 import sys
@@ -38,7 +38,6 @@ class GridCreator:
         self.video_h = int(self.videos[COMMON_INFO_IDX].get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     def create_grid(self):
-        count = 0
         image_channels = 3
 
         for indices in self.detector.get_movement_index(self.steps):
@@ -52,16 +51,20 @@ class GridCreator:
 
                     grid[i][video_index] = frame
 
-            yield count, np.hstack(np.hstack(grid))
-            count += 1
+            yield np.hstack(np.hstack(grid))
 
     def save_grids(self):
         print(f"\nExporting grids of images...")
 
-        for count, frames in self.create_grid():
+        total = 0
+
+        for count, frames in enumerate(self.create_grid()):
             cv2.imwrite(f"{self.directory}/scene{self.scene:03d}_grid{count:05d}.png", frames)
             if count % 100 == 0:
                 print(f"- Grid {count:05d} exported.")
+            total = count
+
+        print(f"- Exported {total + 1} grids in total.")
 
 
 def main():
