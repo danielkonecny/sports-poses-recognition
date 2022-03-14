@@ -3,12 +3,11 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Detects motion in video with sparse optical flow.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 03. 03. 2022
+Date: 14. 03. 2022
 """
 
 import sys
 from pathlib import Path
-from pprint import pprint
 
 import numpy as np
 import cv2
@@ -20,31 +19,60 @@ POINTS_FOUND_THRESH = 5
 POINTS_LOST_THRESH = 5
 
 
-def calc_move_dist(good_new, good_old):
-    dists = np.empty((len(good_new),))
-    m = np.empty((2, len(good_new)))
+def load_move_vectors(good_new, good_old):
+    vectors = np.empty((2, len(good_new)))
 
     for i, (new, old) in enumerate(zip(good_new, good_old)):
         a, b = new.ravel()
         c, d = old.ravel()
-        m[0][i] = a - c
-        m[1][i] = b - d
-        dists[i] = np.linalg.norm([a - c, b - d])
+        vectors[0][i] = a - c
+        vectors[1][i] = b - d
 
-    point_move_thresh = np.where(dists > 2)
-    print(f"Thresh: {point_move_thresh}")
+    return vectors
 
-    if np.sum(point_move_thresh) > 0:
-        average = np.mean(dists[point_move_thresh])
 
-        print(f"Matrix: {m}")
-        m = np.squeeze(m[:, point_move_thresh], axis=1)
-        print(f"Matrix: {m}")
-        d = m.T @ m
-        norm = (m * m).sum(0, keepdims=True) ** .5
-        similarity_matrix = d / norm / norm.T
-        print(f"Similarity mat: {similarity_matrix}")
+def clean_short_vectors(vectors):
+    distances = np.linalg.norm(vectors, axis=0)
+    point_move_thresh = np.where(distances > 2)
+    vectors = vectors[:, point_move_thresh[0]]
+    return vectors
 
+
+def clean_same_vectors(vectors):
+    if len(vectors[0]) > 0:
+        denominator = vectors.T @ vectors
+        norm = (vectors * vectors).sum(0, keepdims=True) ** .5
+        similarity_matrix = denominator / norm / norm.T
+
+        indices = []
+        for row in range(len(similarity_matrix[0])):
+            for col in range(row + 1, len(similarity_matrix[0])):
+                indices.append((row, col))
+
+        excluded_indices = []
+        for row, col in indices:
+            if row in excluded_indices or col in excluded_indices:
+                continue
+            if similarity_matrix[row, col] > 0.9:
+                excluded_indices.append(col)
+
+        vectors = np.delete(vectors, excluded_indices, axis=1)
+
+        # If only one vector remained, all other ones were similar to it and unwanted translation was detected.
+        if len(vectors[0]) == 1:
+            vectors = [[]]
+
+    return vectors
+
+
+def calc_move_dist(good_new, good_old):
+    vectors = load_move_vectors(good_new, good_old)
+    vectors = clean_short_vectors(vectors)
+    vectors = clean_same_vectors(vectors)
+
+    if len(vectors[0]) > 0:
+        distances = np.linalg.norm(vectors, axis=0)
+        average = np.mean(distances)
     else:
         average = 0
 
@@ -97,6 +125,7 @@ def get_sparse_flow(video):
     orig_num_points = len(p0)
 
     for frame_index in range(frame_length):
+        # print(f"--- Frame {frame_index}")
         # Read the next frame
         ret, new_frame = video.read()
         if not ret:
@@ -146,14 +175,14 @@ class MotionDetector:
             frame_length = int(video.get(cv2.CAP_PROP_FRAME_COUNT)) - 1
             videos.append(video)
 
-        summed_flow = np.zeros((frame_length,))
+        flow = np.zeros((len(self.video_paths), frame_length,))
 
         for i, video in enumerate(videos):
             print(f"- Video {i} loaded.")
-            flow = np.array(get_sparse_flow(video))
-            summed_flow += flow
+            flow[i] = np.array(get_sparse_flow(video))
 
-        self.indices, self.movements = reduce_flow(summed_flow, len(self.video_paths) * 30)
+        flow = flow.sum(axis=0)
+        self.indices, self.movements = reduce_flow(flow, len(self.video_paths) * 20)
 
     def get_movement_index(self, steps=2):
         indices = []
