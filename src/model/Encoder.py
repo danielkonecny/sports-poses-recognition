@@ -247,21 +247,46 @@ class Encoder:
 
         return best_epoch, best_path
 
-    def predict(self, images):
+    def encode(self, images):
         if self.verbose:
-            print("En - Predicting images on a model...")
-
-        # TODO - expand dims if only one image
+            print("En - Encoding images with the model...")
 
         # TODO - set model to predict mode (cubify and data augmentation turned off)
         encoded_images = self.model(images, training=False)
 
-        # TODO - reduce dims if only one image
-
         return encoded_images
 
 
-def main():
+def encode():
+    args = parse_arguments()
+    encoder = Encoder(
+        args.location,
+        args.steps,
+        args.cameras,
+        args.height,
+        args.width,
+        args.channels,
+        args.encoding_dim,
+        args.margin,
+        args.log_dir,
+        args.ckpt_dir,
+        args.restore,
+        args.verbose
+    )
+    encoder.create_model()
+    encoder.set_checkpoints()
+
+    # TODO - load images
+    images = []
+
+    # TODO - expand dims if only one image
+
+    encodings = encoder.encode(images)
+
+    print(encodings.shape)
+
+
+def train():
     args = parse_arguments()
     dataset_handler = DatasetHandler(
         args.location,
@@ -306,4 +331,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    train()
