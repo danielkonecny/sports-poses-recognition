@@ -323,7 +323,7 @@ def train():
     # encoder.model.summary()
     # encoder.model.layers[3].summary()
 
-    trn_ds, val_ds = dataset_handler.get_dataset_generators(args.batch_size, args.val_split)
+    trn_ds, val_ds = dataset_handler.get_grid_dataset_generators(args.batch_size, args.val_split)
     dataset_size = dataset_handler.get_dataset_size()
 
     _, best_path = encoder.fit(trn_ds, val_ds, args.epochs, dataset_size)

@@ -15,8 +15,8 @@ import cv2
 from src.utils.params import parse_arguments
 
 COMMON_INFO_IDX = 0
-POINTS_FOUND_THRESH = 5
-POINTS_LOST_THRESH = 5
+POINTS_FOUND_THRESH = 3
+POINTS_LOST_THRESH = 1
 
 
 def load_move_vectors(good_new, good_old):
@@ -201,7 +201,7 @@ def test():
 
     detector = MotionDetector(args.location)
 
-    for i in detector.get_grid_indices(3):
+    for i in detector.get_indices():
         print(i)
 
 
