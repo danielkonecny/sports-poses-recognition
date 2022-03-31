@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for loading training data and rearranging them for specific training purposes.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 16. 02. 2022
+Date: 31. 03. 2022
 """
 
 from pathlib import Path
@@ -15,10 +15,7 @@ import matplotlib.pyplot as plt
 from src.utils.params import parse_arguments
 
 
-def process_path(file_path):
-    img = tf.io.read_file(file_path)
-    img = tf.image.decode_png(img, channels=3)
-
+def load_metadata(file_path):
     scene = tf.strings.regex_replace(file_path, r".*/scene(\d+)_cam(\d)_image(\d+).png", r"\1")
     scene = tf.strings.to_number(scene, tf.int32)
 
@@ -28,7 +25,31 @@ def process_path(file_path):
     index = tf.strings.regex_replace(file_path, r".*/scene(\d+)_cam(\d)_image(\d+).png", r"\3")
     index = tf.strings.to_number(index, tf.int32)
 
-    return img, scene, cam, index
+    return file_path, scene, cam, index
+
+
+def load_image(paths):
+    img_anchor = tf.io.read_file(paths[0])
+    img_anchor = tf.image.decode_png(img_anchor, channels=3)
+
+    img_positive = tf.io.read_file(paths[1])
+    img_positive = tf.image.decode_png(img_positive, channels=3)
+
+    img_negative = tf.io.read_file(paths[2])
+    img_negative = tf.image.decode_png(img_negative, channels=3)
+
+    return img_anchor, img_positive, img_negative
+
+
+def split_ds_into_batches_gen(ds, batch_size=30):
+    batch = []
+    for i, (a, p, n) in enumerate(ds):
+        batch.append([a, p, n])
+        if (i + 1) % batch_size == 0:
+            yield tf.stack(batch)
+            batch = []
+
+    yield tf.stack(batch)
 
 
 class DatasetHandler:
@@ -45,7 +66,7 @@ class DatasetHandler:
         if self.verbose:
             print("Dataset Handler (DH) initialized.")
 
-    def get_dataset_size(self, val_split=0.2):
+    def get_grid_dataset_size(self, val_split=0.2):
         path = Path(self.directory)
         count = len(list(path.glob('*.png')))
 
@@ -100,37 +121,109 @@ class DatasetHandler:
 
         return trn_ds, val_ds
 
-    def get_dataset_generators(self, val_split=0.2):
+    def get_triplet_generators(self, val_split=0.2):
         if self.verbose:
             print("DH - Loading train and validation dataset...")
 
-        image_count = len(list(self.directory.glob('*.png')))
+        image_count = len(list(self.directory.glob('*/*.png')))
+
+        cam_count = 3
+        triplet_configs = [
+            tf.constant([0, 1, 0 + cam_count], dtype=tf.int64),
+            tf.constant([0, 2, 0 + cam_count], dtype=tf.int64),
+            tf.constant([1, 0, 1 + cam_count], dtype=tf.int64),
+            tf.constant([1, 2, 1 + cam_count], dtype=tf.int64),
+            tf.constant([2, 0, 2 + cam_count], dtype=tf.int64),
+            tf.constant([2, 1, 2 + cam_count], dtype=tf.int64)
+        ]
 
         list_dss = [
             tf.data.Dataset.list_files(str(self.directory / 'cam0/*.png'), shuffle=False).take(image_count - 1),
-            tf.data.Dataset.list_files(str(self.directory / 'cam0/*.png'), shuffle=False).skip(1),
             tf.data.Dataset.list_files(str(self.directory / 'cam1/*.png'), shuffle=False).take(image_count - 1),
-            tf.data.Dataset.list_files(str(self.directory / 'cam1/*.png'), shuffle=False).skip(1),
             tf.data.Dataset.list_files(str(self.directory / 'cam2/*.png'), shuffle=False).take(image_count - 1),
+            tf.data.Dataset.list_files(str(self.directory / 'cam0/*.png'), shuffle=False).skip(1),
+            tf.data.Dataset.list_files(str(self.directory / 'cam1/*.png'), shuffle=False).skip(1),
             tf.data.Dataset.list_files(str(self.directory / 'cam2/*.png'), shuffle=False).skip(1)
         ]
 
-        dss = []
-        for list_ds in list_dss:
-            dss.append(list_ds.map(process_path, num_parallel_calls=tf.data.AUTOTUNE))
+        ds = None
+        for config in triplet_configs:
+            choice_dataset = tf.data.Dataset.from_tensors(config).repeat(image_count - 1).unbatch()
+            tmp_ds = tf.data.Dataset.choose_from_datasets(list_dss, choice_dataset)
+            tmp_ds = tmp_ds.batch(3, drop_remainder=True)
 
-        tensor = tf.constant([0, 2, 1], dtype=tf.int64)
-        choice_dataset = tf.data.Dataset.from_tensors(tensor).repeat(image_count - 1).unbatch()
-        ds = tf.data.Dataset.choose_from_datasets(dss, choice_dataset)
-        ds = ds.batch(3, drop_remainder=True)
+            if ds is not None:
+                ds = ds.concatenate(tmp_ds)
+            else:
+                ds = tmp_ds
 
-        # ds = ds.shuffle(image_count, reshuffle_each_iteration=False)
+        ds = ds.shuffle(image_count, reshuffle_each_iteration=False)
+
+        ds = ds.map(load_image, num_parallel_calls=tf.data.AUTOTUNE)
 
         val_size = int(image_count * val_split)
         train_ds = ds.skip(val_size)
         val_ds = ds.take(val_size)
 
         return train_ds, val_ds
+
+    def get_dataset_generators(self, batch_size=64, val_split=0.2):
+        train_ds, val_ds = self.get_triplet_generators(val_split)
+
+        # TODO - wrap the generator in a tf.data.Dataset pipeline
+        # train_ds = tf.data.Dataset.from_generator(
+        #     split_ds_into_batches_gen,
+        #     args=(train_ds, batch_size),
+        #     output_signature=(
+        #         tf.RaggedTensorSpec(shape=(None, 3, 224, 224, 3), dtype=tf.int32)
+        #     )
+        # )
+        # val_ds = tf.data.Dataset.from_generator(
+        #     split_ds_into_batches_gen,
+        #     args=(val_ds, batch_size),
+        #     output_signature=(
+        #         tf.RaggedTensorSpec(shape=(None, 3, 224, 224, 3), dtype=tf.int32)
+        #     )
+        # )
+
+        train_ds = split_ds_into_batches_gen(train_ds, batch_size)
+        val_ds = split_ds_into_batches_gen(val_ds, batch_size)
+
+        return train_ds, val_ds
+
+
+def test_old():
+    args = parse_arguments()
+
+    dataset_handler = DatasetHandler(
+        args.location,
+        args.steps,
+        args.cameras,
+        args.height,
+        args.width,
+        args.verbose
+    )
+
+    dataset_size = dataset_handler.get_grid_dataset_size()
+    print(dataset_size[0], dataset_size[1])
+
+    trn_ds, val_ds = dataset_handler.get_grid_dataset_generators(args.batch_size, args.val_split)
+
+    for batch in trn_ds:
+        for grid in batch:
+            plt.imshow(grid / 255.)
+            plt.axis("off")
+            plt.show()
+            break
+        break
+
+    for batch in val_ds:
+        for grid in batch:
+            plt.imshow(grid / 255.)
+            plt.axis("off")
+            plt.show()
+            break
+        break
 
 
 def test():
@@ -145,44 +238,38 @@ def test():
         args.verbose
     )
 
-    train_ds, val_ds = dataset_handler.get_dataset_generators()
+    train_ds, val_ds = dataset_handler.get_dataset_generators(args.batch_size, args.val_split)
 
     for epoch in range(1):
         print(f"\nEpoch {epoch}")
-        for image, scene, cam, index in train_ds:
-            print(f"Train - Image Shape: {image.numpy().shape}, Scene: {scene.numpy()}, "
-                  f"Cam: {cam.numpy()}, Index: {index.numpy()}")
-            # plt.imshow(image.numpy() / 255.)
-            # plt.axis("off")
-            # plt.show()
+        for batch in train_ds:
+            print(batch.shape)
+            for a, p, n in batch:
+                plt.imshow(a.numpy() / 255.)
+                plt.axis("off")
+                plt.show()
+                plt.imshow(p.numpy() / 255.)
+                plt.axis("off")
+                plt.show()
+                plt.imshow(n.numpy() / 255.)
+                plt.axis("off")
+                plt.show()
+                break
+            break
 
-        for image, scene, cam, index in val_ds:
-            print(f"Val - Image Shape: {image.numpy().shape}, Scene: {scene.numpy()}, "
-                  f"Cam: {cam.numpy()}, Index: {index.numpy()}")
-            # plt.imshow(image.numpy() / 255.)
-            # plt.axis("off")
-            # plt.show()
-
-    # dataset_size = dataset_handler.get_dataset_size()
-    # print(dataset_size[0], dataset_size[1])
-    #
-    # trn_ds, val_ds = dataset_handler.get_grid_dataset_generators(args.batch_size, args.val_split)
-    #
-    # for batch in trn_ds:
-    #     for grid in batch:
-    #         plt.imshow(grid / 255.)
-    #         plt.axis("off")
-    #         plt.show()
-    #         break
-    #     break
-    #
-    # for batch in val_ds:
-    #     for grid in batch:
-    #         plt.imshow(grid / 255.)
-    #         plt.axis("off")
-    #         plt.show()
-    #         break
-    #     break
+        for batch in val_ds:
+            for a, p, n in batch:
+                plt.imshow(a.numpy() / 255.)
+                plt.axis("off")
+                plt.show()
+                plt.imshow(p.numpy() / 255.)
+                plt.axis("off")
+                plt.show()
+                plt.imshow(n.numpy() / 255.)
+                plt.axis("off")
+                plt.show()
+                break
+            break
 
 
 if __name__ == "__main__":
