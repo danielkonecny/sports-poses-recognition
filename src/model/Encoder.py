@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 08. 03. 2022
+Date: 04. 04. 2022
 """
 
 from pathlib import Path
@@ -13,28 +13,8 @@ import datetime
 import tensorflow as tf
 from tensorflow.keras import layers
 
-from itertools import combinations
-from math import comb
-import numpy as np
-
-from src.model.Cubify import Cubify
-from src.model.DatasetHandler import DatasetHandler
+from src.model.DatasetHandler import DatasetHandler, batch_provider
 from src.utils.params import parse_arguments
-
-
-def triplets_in_grid(grid_shape):
-    triplet = 3
-    steps = grid_shape[0]
-    cameras = grid_shape[1]
-    triplet_indices = np.empty(((cameras - 1) * steps * comb(cameras, triplet - 1), triplet), dtype=np.int32)
-
-    index = 0
-    for a_p in combinations(range(cameras), triplet - 1):
-        for n in range(cameras, cameras * steps):
-            triplet_indices[index] = [a_p[0], a_p[1], n]
-            index += 1
-
-    return tf.convert_to_tensor(triplet_indices, dtype=tf.int32)
 
 
 @tf.function
@@ -88,16 +68,12 @@ class Encoder:
         if self.verbose:
             print("En - Creating encoder model.")
 
-        net_input = tf.keras.Input(shape=(self.height * self.steps, self.width * self.cameras, self.channels))
-
-        "'__call__' method is inherited from 'tf.keras.layers.Layer' and calls defined 'call' method, so no problem."
-        # noinspection PyCallingNonCallable
-        cubify = Cubify((self.height, self.width, self.channels))(net_input)
+        net_input = tf.keras.Input(shape=(self.height, self.width, self.channels))
 
         data_augmentation = tf.keras.Sequential([
             layers.RandomFlip("horizontal"),
             layers.RandomRotation(0.05, fill_mode='nearest'),
-        ])(cubify)
+        ])(net_input)
 
         # backbone = tf.keras.applications.mobilenet.MobileNet(include_top=False, weights='imagenet')(data_augmentation)
         backbone = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet')(data_augmentation)
@@ -141,10 +117,10 @@ class Encoder:
             tf.summary.scalar('time', time_metrics, step=self.ckpt.step.numpy())
 
         if self.verbose:
-            print(f"En --- {'Train' if is_train else 'Val'}:"
-                  f" Loss = {loss:.6f},"
-                  f" Accuracy = {acc:7.2%}."
-                  f" Time/Tuple = {time_metrics:.2f} ms.")
+            print(f"En --- {'Train' if is_train else 'Val'}: "
+                  f"Loss = {loss:.6f}, "
+                  f"Accuracy = {acc:7.2%}. "
+                  f"Time/Tuple = {time_metrics:.2f} ms.")
 
         loss_metrics.reset_states()
         acc_metrics.reset_states()
@@ -152,54 +128,54 @@ class Encoder:
         return loss, acc
 
     @tf.function
-    def train_step(self, n_tuple, triplet_indices):
+    def train_step(self, batch):
         with tf.GradientTape() as tape:
-            n_tuple_expanded = tf.expand_dims(n_tuple, axis=0)
-            n_tuple_encoded = self.model(n_tuple_expanded, training=True)
-            triplets = tf.gather(n_tuple_encoded, indices=triplet_indices)
-            loss, accuracy = triplet_loss(triplets, self.margin)
+            reshaped = tf.reshape(batch,
+                                  [batch.shape[0] * batch.shape[1], batch.shape[2], batch.shape[3], batch.shape[4]])
+            batch_encoded = self.model(reshaped, training=True)
+            reverted = tf.reshape(batch_encoded, [batch.shape[0], batch.shape[1], self.encoding_dim])
+            loss, accuracy = triplet_loss(reverted, self.margin)
 
         gradients = tape.gradient(loss, self.model.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_weights))
 
-        self.trn_loss(loss / len(triplet_indices))
+        self.trn_loss(loss / len(batch))
         self.trn_accuracy(accuracy)
 
-    def train_on_batches(self, trn_ds, triplet_indices, subdataset_size):
+    def train_on_batches(self, train_ds, subdataset_size, batch_size):
         start_time = time.perf_counter()
-        for batch in trn_ds:
-            for n_tuple in batch:
-                self.train_step(n_tuple, triplet_indices)
+        for batch in batch_provider(train_ds, batch_size):
+            self.train_step(batch)
         end_time = time.perf_counter()
-        tuple_train_time = (end_time - start_time) / subdataset_size * 1e3
+        batch_train_time = (end_time - start_time) / subdataset_size * 1e3
 
-        loss, acc = self.log_results(self.train_writer, self.trn_loss, self.trn_accuracy, tuple_train_time)
+        loss, acc = self.log_results(self.train_writer, self.trn_loss, self.trn_accuracy, batch_train_time)
 
         return loss, acc
 
     @tf.function
-    def val_step(self, n_tuple, triplet_indices):
-        n_tuple_expanded = tf.expand_dims(n_tuple, axis=0)
-        n_tuple_encoded = self.model(n_tuple_expanded, training=False)
-        triplets = tf.gather(n_tuple_encoded, indices=triplet_indices)
-        loss, accuracy = triplet_loss(triplets, self.margin)
+    def val_step(self, batch):
+        reshaped = tf.reshape(batch,
+                              [batch.shape[0] * batch.shape[1], batch.shape[2], batch.shape[3], batch.shape[4]])
+        batch_encoded = self.model(reshaped, training=False)
+        reverted = tf.reshape(batch_encoded, [batch.shape[0], batch.shape[1], self.encoding_dim])
+        loss, accuracy = triplet_loss(reverted, self.margin)
 
-        self.val_loss(loss / len(triplet_indices))
+        self.val_loss(loss / len(batch))
         self.val_accuracy(accuracy)
 
-    def val_on_batches(self, val_ds, triplet_indices, subdataset_size):
+    def val_on_batches(self, val_ds, subdataset_size, batch_size):
         start_time = time.perf_counter()
-        for batch in val_ds:
-            for n_tuple in batch:
-                self.val_step(n_tuple, triplet_indices)
+        for batch in batch_provider(val_ds, batch_size):
+            self.val_step(batch)
         end_time = time.perf_counter()
-        tuple_val_time = (end_time - start_time) / subdataset_size * 1e3
+        batch_val_time = (end_time - start_time) / subdataset_size * 1e3
 
-        loss, acc = self.log_results(self.val_writer, self.val_loss, self.val_accuracy, tuple_val_time, False)
+        loss, acc = self.log_results(self.val_writer, self.val_loss, self.val_accuracy, batch_val_time, False)
 
         return loss, acc
 
-    def fit(self, trn_ds, val_ds, epochs, dataset_size):
+    def fit(self, trn_ds, val_ds, epochs, dataset_size, batch_size):
         if self.verbose:
             print("En - Fitting the model...")
 
@@ -207,14 +183,12 @@ class Encoder:
         best_epoch = -1
         best_path = ""
 
-        triplet_indices = triplets_in_grid((self.steps, self.cameras))
-
         for index in range(epochs):
             if self.verbose:
                 print(f"En -- Epoch {self.ckpt.step.numpy() + 1:02d}.")
 
-            self.train_on_batches(trn_ds, triplet_indices, dataset_size[0])
-            _, accuracy = self.val_on_batches(val_ds, triplet_indices, dataset_size[1])
+            self.train_on_batches(trn_ds, dataset_size[0], batch_size)
+            _, accuracy = self.val_on_batches(val_ds, dataset_size[1], batch_size)
 
             save_path = self.manager.save()
 
@@ -230,7 +204,7 @@ class Encoder:
 
         return best_epoch, best_path
 
-    def fine_tune(self, trn_ds, val_ds, epochs, dataset_size, best_path=None):
+    def fine_tune(self, trn_ds, val_ds, epochs, dataset_size, batch_size, best_path=None):
         if self.verbose:
             print("En - Fine tuning the model...")
 
@@ -243,7 +217,7 @@ class Encoder:
         self.model.layers[3].trainable = True
         self.optimizer = tf.keras.optimizers.Adam(1e-5)
 
-        best_epoch, best_path = self.fit(trn_ds, val_ds, epochs, dataset_size)
+        best_epoch, best_path = self.fit(trn_ds, val_ds, epochs, dataset_size, batch_size)
 
         return best_epoch, best_path
 
@@ -313,21 +287,15 @@ def train():
     encoder.create_model()
     encoder.set_checkpoints()
 
-    # model = tf.keras.applications.mobilenet.MobileNet(
-    #     input_shape=None, alpha=1.0, depth_multiplier=1, dropout=0.001,
-    #     include_top=True, weights='imagenet', input_tensor=None, pooling=None,
-    #     classes=1000, classifier_activation='softmax'
-    # )
-    # model.summary()
+    train_ds, val_ds = dataset_handler.get_dataset(args.val_split)
+    dataset_size = dataset_handler.get_dataset_size()
 
-    # encoder.model.summary()
-    # encoder.model.layers[3].summary()
+    _, best_path = encoder.fit(train_ds, val_ds, args.epochs, dataset_size, args.batch_size)
+    if args.fine_tune > 0:
+        encoder.fine_tune(train_ds, val_ds, args.fine_tune, dataset_size, args.batch_size, best_path)
 
-    trn_ds, val_ds = dataset_handler.get_grid_dataset_generators(args.batch_size, args.val_split)
-    dataset_size = dataset_handler.get_grid_dataset_size()
-
-    _, best_path = encoder.fit(trn_ds, val_ds, args.epochs, dataset_size)
-    encoder.fine_tune(trn_ds, val_ds, args.fine_tune, dataset_size, best_path)
+    if args.verbose:
+        print("En - Training finished.")
 
 
 if __name__ == "__main__":
