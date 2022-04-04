@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for providing training data for triplet loss.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 19. 03. 2022
+Date: 04. 04. 2022
 """
 
 import sys
@@ -17,9 +17,10 @@ from src.utils.params import parse_arguments
 
 
 class DatasetCreator:
-    def __init__(self, directory, steps):
+    def __init__(self, directory, steps, export_dir):
         print("Dataset Creator (DC) initialized.")
         self.directory = Path(directory)
+        self.export_dir = Path(export_dir)
 
         self.steps = steps
         self.detector = MotionDetector.MotionDetector(directory)
@@ -46,6 +47,11 @@ class DatasetCreator:
 
         total = 0
 
+        dataset_dir = self.export_dir / f"scene{self.scene:03d}"
+        for cam_index, _ in enumerate(self.videos):
+            cam_dir = dataset_dir / f"cam{cam_index}"
+            cam_dir.mkdir(parents=True, exist_ok=True)
+
         for image_index, index in enumerate(self.detector.get_indices()):
             for video_index, video in enumerate(self.videos):
                 video.set(cv2.CAP_PROP_POS_FRAMES, index)
@@ -53,7 +59,8 @@ class DatasetCreator:
                 if not ret:
                     print(f"DC -- Frame {index:05d} from flow does not exist.", file=sys.stderr)
 
-                cv2.imwrite(f"{self.directory}/scene{self.scene:03d}_cam{video_index}_image{image_index:05d}.png",
+                cv2.imwrite(f"{dataset_dir}/cam{video_index}/"
+                            f"scene{self.scene:03d}_cam{video_index}_image{image_index:05d}.png",
                             frame)
 
             if image_index % 10 == 0:
@@ -68,7 +75,7 @@ def main():
     args = parse_arguments()
 
     try:
-        dataset_creator = DatasetCreator(args.location, args.steps)
+        dataset_creator = DatasetCreator(args.location, args.steps, args.export_dir)
     except FileNotFoundError:
         return 1
 
