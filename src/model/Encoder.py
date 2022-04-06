@@ -3,8 +3,10 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 04. 04. 2022
+Date: 06. 04. 2022
 """
+
+from safe_gpu import safe_gpu
 
 from pathlib import Path
 import time
@@ -262,6 +264,13 @@ def encode():
 
 def train():
     args = parse_arguments()
+
+    if args.gpu:
+        if args.verbose:
+            print("Running in GPU enabled mode.")
+            print(f"Available GPUs: {tf.config.list_physical_devices('GPU')}")
+        gpu_owner = safe_gpu.GPUOwner(placeholder_fn=safe_gpu.tensorflow_placeholder)
+
     dataset_handler = DatasetHandler(
         args.location,
         args.steps,

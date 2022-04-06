@@ -156,4 +156,9 @@ def parse_arguments():
         action='store_true',
         help="Use to turn on additional text output about what is happening."
     )
+    parser.add_argument(
+        '-g', '--gpu',
+        action='store_true',
+        help="Use to turn on Safe GPU command to run on a machine with multiple GPUs."
+    )
     return parser.parse_args()
