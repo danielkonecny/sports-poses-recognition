@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for loading training data and rearranging them for specific training purposes.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 04. 04. 2022
+Date: 06. 04. 2022
 """
 
 from pathlib import Path
@@ -75,7 +75,7 @@ class DatasetHandler:
 
         return train_count, val_count
 
-    def get_scene_dataset(self, scene_dir, val_split=0.2):
+    def get_scene_dataset(self, scene_dir):
         image_count = len(list(scene_dir.glob('cam0/*.png')))
         triplet_count = (image_count - 1) * 6
 
@@ -128,7 +128,7 @@ class DatasetHandler:
             if self.verbose:
                 print(f"DH -- Processing scene from path {scene_path}...")
 
-            new_ds, new_size = self.get_scene_dataset(scene_path, val_split)
+            new_ds, new_size = self.get_scene_dataset(scene_path)
             size += new_size
             if ds is None:
                 ds = new_ds
@@ -157,7 +157,7 @@ def test():
         args.verbose
     )
 
-    train_size, val_size = dataset_handler.get_dataset_size()
+    train_size, val_size = dataset_handler.get_dataset_size(args.val_split)
     print(train_size, val_size)
 
     train_ds, val_ds = dataset_handler.get_dataset(args.val_split)
@@ -166,6 +166,7 @@ def test():
         print(f"\nEpoch {epoch}")
         for batch in batch_provider(train_ds, args.batch_size):
             print(batch.shape)
+            break
 
         for batch in batch_provider(val_ds, args.batch_size):
             for a, p, n in batch:
@@ -179,6 +180,7 @@ def test():
                 plt.axis("off")
                 plt.show()
                 break
+            break
 
 
 if __name__ == "__main__":
