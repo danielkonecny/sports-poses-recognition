@@ -238,6 +238,7 @@ def train():
         if args.verbose:
             print("Running in GPU enabled mode.")
             print(f"Available GPUs: {tf.config.list_physical_devices('GPU')}")
+        # noinspection PyUnusedLocal
         gpu_owner = safe_gpu.GPUOwner(placeholder_fn=safe_gpu.tensorflow_placeholder)
 
     dataset_handler = DatasetHandler(
