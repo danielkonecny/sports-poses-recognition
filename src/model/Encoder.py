@@ -3,17 +3,18 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 06. 04. 2022
+Date: 09. 04. 2022
 """
 
-from safe_gpu import safe_gpu
-
 from pathlib import Path
+import sys
 import time
 import datetime
 
 import tensorflow as tf
 from tensorflow.keras import layers
+
+from safe_gpu import safe_gpu
 
 from src.model.DatasetHandler import DatasetHandler, batch_provider
 from src.utils.params import parse_arguments
@@ -31,22 +32,11 @@ def triplet_loss(triplets, margin=0.01):
 
 
 class Encoder:
-    def __init__(self, directory, steps, cameras, height, width, channels, encoding_dim, margin,
-                 log_dir, ckpt_dir, restore, verbose=False):
-        self.directory = Path(directory)
-
-        self.steps = steps
-        self.cameras = cameras
-        self.height = height
-        self.width = width
-        self.channels = channels
+    def __init__(self, height=224, width=224, channels=3, encoding_dim=256, margin=0.01,
+                 log_dir='logs', ckpt_dir='ckpts', restore=False, verbose=False):
 
         self.encoding_dim = encoding_dim
         self.margin = margin
-
-        self.log_dir = Path(log_dir)
-        self.ckpt_dir = Path(ckpt_dir)
-        self.restore = restore
 
         self.model = self.optimizer = self.ckpt = self.manager = None
         self.trn_loss = tf.keras.metrics.Mean('trn_loss', dtype=tf.float32)
@@ -56,21 +46,24 @@ class Encoder:
 
         self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         self.train_writer = tf.summary.create_file_writer(
-            str(self.log_dir / f'{self.current_time}/gradient_tape/train')
+            str(Path(log_dir) / f'{self.current_time}/gradient_tape/train')
         )
         self.val_writer = tf.summary.create_file_writer(
-            str(self.log_dir / f'{self.current_time}/gradient_tape/val')
+            str(Path(log_dir) / f'{self.current_time}/gradient_tape/val')
         )
 
         self.verbose = verbose
         if self.verbose:
             print("Encoder (En) initialized.")
 
-    def create_model(self):
+        self.create_model(height, width, channels, encoding_dim)
+        self.set_checkpoints(ckpt_dir, restore)
+
+    def create_model(self, height, width, channels, encoding_dim):
         if self.verbose:
             print("En - Creating encoder model.")
 
-        net_input = tf.keras.Input(shape=(self.height, self.width, self.channels))
+        net_input = tf.keras.Input(shape=(height, width, channels))
 
         data_augmentation = tf.keras.Sequential([
             layers.RandomFlip("horizontal"),
@@ -82,29 +75,23 @@ class Encoder:
 
         head = layers.AveragePooling2D(pool_size=(7, 7))(backbone)
         head = layers.Flatten()(head)
-        head = layers.Dense(self.encoding_dim, activation=None, name='trained')(head)
+        head = layers.Dense(encoding_dim, activation=None, name='trained')(head)
         # Normalize to a vector on a Unit Hypersphere.
         head = layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=1))(head)
 
         self.model = tf.keras.Model(inputs=net_input, outputs=head, name='encoder')
 
-        # Freeze backbone (ResNet50).
-        self.model.layers[3].trainable = False
-
-        # Not necessary when only backbone is frozen.
-        # self.model.get_layer(name='trained').trainable = True
-
         self.optimizer = tf.keras.optimizers.Adam()
 
-    def set_checkpoints(self):
+    def set_checkpoints(self, ckpt_dir, restore):
         self.ckpt = tf.train.Checkpoint(step=tf.Variable(0, dtype=tf.int64), optimizer=self.optimizer, net=self.model)
-        self.manager = tf.train.CheckpointManager(self.ckpt, self.ckpt_dir, max_to_keep=100)
+        self.manager = tf.train.CheckpointManager(self.ckpt, ckpt_dir, max_to_keep=100)
 
-        if self.restore:
+        if restore:
             self.ckpt.restore(self.manager.latest_checkpoint)
             self.ckpt.step.assign_add(1)
 
-        if self.verbose and self.restore and self.manager.latest_checkpoint:
+        if self.verbose and restore and self.manager.latest_checkpoint:
             print(f"En -- Checkpoint restored from {self.manager.latest_checkpoint}")
         elif self.verbose:
             print("En -- Checkpoint initialized in ckpts directory.")
@@ -185,6 +172,9 @@ class Encoder:
         best_epoch = -1
         best_path = ""
 
+        # Freeze backbone (ResNet50).
+        self.model.layers[3].trainable = False
+
         for index in range(epochs):
             if self.verbose:
                 print(f"En -- Epoch {self.ckpt.step.numpy() + 1:02d}.")
@@ -216,6 +206,7 @@ class Encoder:
             if self.verbose:
                 print(f"En -- Restored best model from path '{best_path}'.")
 
+        # Unfreeze backbone (ResNet50).
         self.model.layers[3].trainable = True
         self.optimizer = tf.keras.optimizers.Adam(1e-5)
 
@@ -227,39 +218,17 @@ class Encoder:
         if self.verbose:
             print("En - Encoding images with the model...")
 
-        # TODO - set model to predict mode (cubify and data augmentation turned off)
-        encoded_images = self.model(images, training=False)
+        if images.ndim == 3:
+            images = tf.expand_dims(images, axis=0)
+            encoded_images = self.model(images, training=False)
+            encoded_images = tf.squeeze(encoded_images, axis=0)
+        elif images.ndim == 4:
+            encoded_images = self.model(images, training=False)
+        else:
+            print(f"En -- ", file=sys.stderr)
+            encoded_images = []
 
         return encoded_images
-
-
-def encode():
-    args = parse_arguments()
-    encoder = Encoder(
-        args.location,
-        args.steps,
-        args.cameras,
-        args.height,
-        args.width,
-        args.channels,
-        args.encoding_dim,
-        args.margin,
-        args.log_dir,
-        args.ckpt_dir,
-        args.restore,
-        args.verbose
-    )
-    encoder.create_model()
-    encoder.set_checkpoints()
-
-    # TODO - load images
-    images = []
-
-    # TODO - expand dims if only one image
-
-    encodings = encoder.encode(images)
-
-    print(encodings.shape)
 
 
 def train():
@@ -280,9 +249,6 @@ def train():
         args.verbose
     )
     encoder = Encoder(
-        args.location,
-        args.steps,
-        args.cameras,
         args.height,
         args.width,
         args.channels,
@@ -293,18 +259,21 @@ def train():
         args.restore,
         args.verbose
     )
-    encoder.create_model()
-    encoder.set_checkpoints()
 
     train_ds, val_ds = dataset_handler.get_dataset(args.val_split)
     dataset_size = dataset_handler.get_dataset_size()
 
-    _, best_path = encoder.fit(train_ds, val_ds, args.epochs, dataset_size, args.batch_size)
-    if args.fine_tune > 0:
-        encoder.fine_tune(train_ds, val_ds, args.fine_tune, dataset_size, args.batch_size, best_path)
-
+    best_epoch, best_path = encoder.fit(train_ds, val_ds, args.epochs, dataset_size, args.batch_size)
     if args.verbose:
         print("En - Training finished.")
+        print(f"En - Best accuracy in training was achieved in epoch {best_epoch} and is saved at {best_path}.")
+
+    if args.fine_tune > 0:
+        best_epoch, best_path = encoder.fine_tune(train_ds, val_ds, args.fine_tune,
+                                                  dataset_size, args.batch_size, best_path)
+        if args.verbose:
+            print("En - Fine-tuning finished.")
+            print(f"En - Best accuracy in fine-tuning was achieved in epoch {best_epoch} and is saved at {best_path}.")
 
 
 if __name__ == "__main__":
