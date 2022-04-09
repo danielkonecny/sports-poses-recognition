@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Detects motion in video with sparse optical flow.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 14. 03. 2022
+Date: 19. 03. 2022
 """
 
 import sys
@@ -79,7 +79,7 @@ def calc_move_dist(good_new, good_old):
     return average
 
 
-def reduce_flow(flow, thresh):
+def reduce_flow_in_time(flow, thresh):
     indices = [0]
     summed = 0
 
@@ -105,7 +105,7 @@ def get_sparse_flow(video):
     frame_length = int(video.get(cv2.CAP_PROP_FRAME_COUNT)) - 1
     video_flow = np.zeros((frame_length,))
 
-    print(f"-- Loaded video with {frame_length} frames.")
+    print(f"MD -- Loaded video with {frame_length} frames.")
 
     # Parameters for ShiTomasi corner detection
     feature_params = dict(maxCorners=100, qualityLevel=0.3, minDistance=7, blockSize=7)
@@ -116,10 +116,10 @@ def get_sparse_flow(video):
     # Read the first frame.
     ret, frame = video.read()
     if not ret:
-        print("--- No frame in the video.", file=sys.stderr)
+        print("MD --- No frame in the video.", file=sys.stderr)
         return np.array([])
 
-    print("-- Initial loading of points.")
+    print("MD -- Initial loading of points.")
     old_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
     orig_num_points = len(p0)
@@ -129,7 +129,7 @@ def get_sparse_flow(video):
         # Read the next frame
         ret, new_frame = video.read()
         if not ret:
-            print("--- Video length in frames incorrectly computed.", file=sys.stderr)
+            print("MD --- Video length in frames incorrectly computed.", file=sys.stderr)
             break
         new_gray = cv2.cvtColor(new_frame, cv2.COLOR_BGR2GRAY)
 
@@ -146,13 +146,13 @@ def get_sparse_flow(video):
 
             old_gray = new_gray.copy()
             if len(good_new) <= orig_num_points - POINTS_LOST_THRESH:
-                print(f"--- Lost {POINTS_LOST_THRESH} or more points.")
+                print(f"MD --- Lost {POINTS_LOST_THRESH} or more points.")
                 p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
                 orig_num_points = len(p0)
             else:
                 p0 = good_new.reshape(-1, 1, 2)
         else:
-            print(f"--- Have less than {POINTS_FOUND_THRESH} points.")
+            print(f"MD --- Have less than {POINTS_FOUND_THRESH} points.")
             old_gray = new_gray.copy()
             p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
             orig_num_points = len(p0)
@@ -162,44 +162,46 @@ def get_sparse_flow(video):
 
 class MotionDetector:
     def __init__(self, directory):
-        self.video_paths = list(Path(directory).glob('*.mp4'))
-        self.movements = []
-        self.indices = []
+        print("Motion Detector (MD) initialized.")
+        self.videos = []
+        self.frame_length = -1
+
+        print(f"MD - Loading videos from {directory}...")
+        for video_path in Path(directory).glob('*.mp4'):
+            video = cv2.VideoCapture(str(video_path.resolve()))
+            print(f"MD -- Video {video_path} loaded.")
+
+            if self.frame_length == -1:
+                self.frame_length = int(video.get(cv2.CAP_PROP_FRAME_COUNT)) - 1
+            elif self.frame_length != int(video.get(cv2.CAP_PROP_FRAME_COUNT)) - 1:
+                print("MD --- Video lengths do not match!", file=sys.stderr)
+
+            self.videos.append(video)
 
     def compute_sparse_flows(self):
-        videos = []
-        frame_length = -1
-
-        for video_path in self.video_paths:
-            video = cv2.VideoCapture(str(video_path.resolve()))
-            frame_length = int(video.get(cv2.CAP_PROP_FRAME_COUNT)) - 1
-            videos.append(video)
-
-        flow = np.zeros((len(self.video_paths), frame_length,))
-
-        for i, video in enumerate(videos):
-            print(f"- Video {i} loaded.")
+        print("MD - Computing sparse optical flows...")
+        flow = np.zeros((len(self.videos), self.frame_length,))
+        for i, video in enumerate(self.videos):
             flow[i] = np.array(get_sparse_flow(video))
-
+            print(f"MD -- Flow from video number {i} computed.")
         flow = flow.sum(axis=0)
-        self.indices, self.movements = reduce_flow(flow, len(self.video_paths) * 20)
 
-    def get_movement_index(self, steps=2):
-        indices = []
-        for i in range(len(self.indices) - (steps - 1)):
-            for step in range(steps):
-                indices.append(self.indices[i + step])
-            yield indices
-            indices = []
+        indices, movements = reduce_flow_in_time(flow, len(self.videos) * 20)
+        print(f"MD -- Flow from all videos reduced in time.")
+
+        return indices, movements
+
+    def get_indices(self):
+        indices, _ = self.compute_sparse_flows()
+        return indices
 
 
 def test():
     args = parse_arguments()
 
     detector = MotionDetector(args.location)
-    detector.compute_sparse_flows()
 
-    for i in detector.get_movement_index(3):
+    for i in detector.get_indices():
         print(i)
 
 

@@ -3,16 +3,52 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for loading training data and rearranging them for specific training purposes.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 16. 02. 2022
+Date: 06. 04. 2022
 """
 
 from pathlib import Path
-import contextlib
 
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
 from src.utils.params import parse_arguments
+
+
+def load_metadata(file_path):
+    scene = tf.strings.regex_replace(file_path, r".*/scene(\d+)_cam(\d)_image(\d+).png", r"\1")
+    scene = tf.strings.to_number(scene, tf.int32)
+
+    cam = tf.strings.regex_replace(file_path, r".*/scene(\d+)_cam(\d)_image(\d+).png", r"\2")
+    cam = tf.strings.to_number(cam, tf.int32)
+
+    index = tf.strings.regex_replace(file_path, r".*/scene(\d+)_cam(\d)_image(\d+).png", r"\3")
+    index = tf.strings.to_number(index, tf.int32)
+
+    return file_path, scene, cam, index
+
+
+def load_image(paths):
+    img_anchor = tf.io.read_file(paths[0])
+    img_anchor = tf.image.decode_png(img_anchor, channels=3)
+
+    img_positive = tf.io.read_file(paths[1])
+    img_positive = tf.image.decode_png(img_positive, channels=3)
+
+    img_negative = tf.io.read_file(paths[2])
+    img_negative = tf.image.decode_png(img_negative, channels=3)
+
+    return img_anchor, img_positive, img_negative
+
+
+def batch_provider(ds, batch_size=30):
+    batch = []
+    for i, (a, p, n) in enumerate(ds):
+        batch.append([a, p, n])
+        if (i + 1) % batch_size == 0:
+            yield tf.stack(batch)
+            batch = []
+
+    yield tf.stack(batch)
 
 
 class DatasetHandler:
@@ -31,94 +67,82 @@ class DatasetHandler:
 
     def get_dataset_size(self, val_split=0.2):
         path = Path(self.directory)
-        count = len(list(path.glob('*.png')))
 
-        trn_count = int(round((1 - val_split) * count))
-        val_count = int(round(val_split * count))
+        img_count = len(list(path.glob('*/cam0/*.png')))
+        triplet_count = (img_count - 1) * 6
+        train_count = int(round((1 - val_split) * triplet_count))
+        val_count = int(round(val_split * triplet_count))
 
-        return trn_count, val_count
+        return train_count, val_count
 
-    def get_dataset_generators(self, batch_size=64, val_split=0.2):
+    def get_scene_dataset(self, scene_dir):
+        image_count = len(list(scene_dir.glob('cam0/*.png')))
+        triplet_count = (image_count - 1) * 6
+
+        if self.verbose:
+            print(f"DH --- Image count: {image_count}")
+            print(f"DH --- Triplet count: {triplet_count}")
+
+        cam_count = 3
+        triplet_configs = [
+            tf.constant([0, 1, 0 + cam_count], dtype=tf.int64),
+            tf.constant([0, 2, 0 + cam_count], dtype=tf.int64),
+            tf.constant([1, 0, 1 + cam_count], dtype=tf.int64),
+            tf.constant([1, 2, 1 + cam_count], dtype=tf.int64),
+            tf.constant([2, 0, 2 + cam_count], dtype=tf.int64),
+            tf.constant([2, 1, 2 + cam_count], dtype=tf.int64)
+        ]
+
+        list_dss = [
+            tf.data.Dataset.list_files(str(scene_dir / 'cam0/*.png'), shuffle=False).take(image_count - 1),
+            tf.data.Dataset.list_files(str(scene_dir / 'cam1/*.png'), shuffle=False).take(image_count - 1),
+            tf.data.Dataset.list_files(str(scene_dir / 'cam2/*.png'), shuffle=False).take(image_count - 1),
+            tf.data.Dataset.list_files(str(scene_dir / 'cam0/*.png'), shuffle=False).skip(1),
+            tf.data.Dataset.list_files(str(scene_dir / 'cam1/*.png'), shuffle=False).skip(1),
+            tf.data.Dataset.list_files(str(scene_dir / 'cam2/*.png'), shuffle=False).skip(1)
+        ]
+
+        ds = None
+        for config in triplet_configs:
+            choice_dataset = tf.data.Dataset.from_tensors(config).repeat(image_count - 1).unbatch()
+            new_ds = tf.data.Dataset.choose_from_datasets(list_dss, choice_dataset)
+            new_ds = new_ds.batch(3, drop_remainder=True)
+
+            if ds is None:
+                ds = new_ds
+            else:
+                ds = ds.concatenate(new_ds)
+
+        ds = ds.map(load_image, num_parallel_calls=tf.data.AUTOTUNE)
+
+        return ds, triplet_count
+
+    def get_dataset(self, val_split):
         if self.verbose:
             print("DH - Loading train and validation dataset...")
 
-        with contextlib.redirect_stdout(None):
-            trn_ds = tf.keras.utils.image_dataset_from_directory(
-                self.directory,
-                labels=None,
-                label_mode=None,
-                batch_size=batch_size,
-                image_size=(self.steps * self.height, self.cameras * self.width),
-                shuffle=False,
-                validation_split=val_split,
-                subset="training"
-            )
-            val_ds = tf.keras.utils.image_dataset_from_directory(
-                self.directory,
-                labels=None,
-                label_mode=None,
-                batch_size=batch_size,
-                image_size=(self.steps * self.height, self.cameras * self.width),
-                shuffle=False,
-                validation_split=val_split,
-                subset="validation"
-            )
+        ds = None
+        size = 0
 
-        if self.verbose:
-            print(f'DH -- Number of train batches loaded: {tf.data.experimental.cardinality(trn_ds)}.')
-            print(f'DH -- Number of validation batches loaded: {tf.data.experimental.cardinality(val_ds)}.')
+        for scene_path in self.directory.glob("*"):
+            if self.verbose:
+                print(f"DH -- Processing scene from path {scene_path}...")
 
-        trn_ds = trn_ds.shuffle(10000)
+            new_ds, new_size = self.get_scene_dataset(scene_path)
+            size += new_size
+            if ds is None:
+                ds = new_ds
+            else:
+                ds = ds.concatenate(new_ds)
 
-        # TODO - optimize loading
-        """
-        Optimization options:
-        - prefetch - no significant improvement noticed
-            trn_ds = trn_ds.prefetch(buffer_size=tf.data.AUTOTUNE)
-            val_ds = val_ds.prefetch(buffer_size=tf.data.AUTOTUNE)
+        buffer_size = 256
+        ds = ds.shuffle(buffer_size, reshuffle_each_iteration=False)
 
-        - cache - significant increase of execution time
-            trn_ds = trn_ds.cache()
-            val_ds = val_ds.cache()
-        """
+        val_size = int(round(size * val_split))
+        train_ds = ds.skip(val_size)
+        val_ds = ds.take(val_size)
 
-        return trn_ds, val_ds
-
-    def get_random_dataset_generators(self, batch_size=64, val_split=0.2):
-        if self.verbose:
-            print("DH - Loading train and validation dataset...")
-
-        random_seed = tf.random.uniform(shape=(), minval=1, maxval=2 ** 32, dtype=tf.int64)
-
-        with contextlib.redirect_stdout(None):
-            trn_ds = tf.keras.utils.image_dataset_from_directory(
-                self.directory,
-                labels=None,
-                label_mode=None,
-                batch_size=batch_size,
-                image_size=(self.steps * self.height, self.cameras * self.width),
-                shuffle=True,
-                seed=random_seed,
-                validation_split=val_split,
-                subset="training"
-            )
-            val_ds = tf.keras.utils.image_dataset_from_directory(
-                self.directory,
-                labels=None,
-                label_mode=None,
-                batch_size=batch_size,
-                image_size=(self.steps * self.height, self.cameras * self.width),
-                shuffle=True,
-                seed=random_seed,
-                validation_split=val_split,
-                subset="validation"
-            )
-
-        if self.verbose:
-            print(f'DH -- Number of train batches loaded: {tf.data.experimental.cardinality(trn_ds)}.')
-            print(f'DH -- Number of validation batches loaded: {tf.data.experimental.cardinality(val_ds)}.')
-
-        return trn_ds, val_ds
+        return train_ds, val_ds
 
 
 def test():
@@ -133,26 +157,30 @@ def test():
         args.verbose
     )
 
-    dataset_size = dataset_handler.get_dataset_size()
-    print(dataset_size[0], dataset_size[1])
+    train_size, val_size = dataset_handler.get_dataset_size(args.val_split)
+    print(train_size, val_size)
 
-    trn_ds, val_ds = dataset_handler.get_dataset_generators(args.batch_size, args.val_split)
+    train_ds, val_ds = dataset_handler.get_dataset(args.val_split)
 
-    for batch in trn_ds:
-        for grid in batch:
-            plt.imshow(grid / 255.)
-            plt.axis("off")
-            plt.show()
+    for epoch in range(1):
+        print(f"\nEpoch {epoch}")
+        for batch in batch_provider(train_ds, args.batch_size):
+            print(batch.shape)
             break
-        break
 
-    for batch in val_ds:
-        for grid in batch:
-            plt.imshow(grid / 255.)
-            plt.axis("off")
-            plt.show()
+        for batch in batch_provider(val_ds, args.batch_size):
+            for a, p, n in batch:
+                plt.imshow(a.numpy() / 255.)
+                plt.axis("off")
+                plt.show()
+                plt.imshow(p.numpy() / 255.)
+                plt.axis("off")
+                plt.show()
+                plt.imshow(n.numpy() / 255.)
+                plt.axis("off")
+                plt.show()
+                break
             break
-        break
 
 
 if __name__ == "__main__":

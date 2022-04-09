@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for argument parsing.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 21. 11. 2021
+Date: 04. 04. 2022
 """
 
 from argparse import ArgumentParser
@@ -93,6 +93,12 @@ def parse_arguments():
         help="Number of frames in between optical flow is calculated."
     )
     parser.add_argument(
+        '--export_dir',
+        type=str,
+        default=".",
+        help="Location where the dataset images will be exported in scene*/cam* subdirectories."
+    )
+    parser.add_argument(
         '-e', '--epochs',
         type=int,
         default=10,
@@ -149,5 +155,10 @@ def parse_arguments():
         '-v', '--verbose',
         action='store_true',
         help="Use to turn on additional text output about what is happening."
+    )
+    parser.add_argument(
+        '-g', '--gpu',
+        action='store_true',
+        help="Use to turn on Safe GPU command to run on a machine with multiple GPUs."
     )
     return parser.parse_args()
