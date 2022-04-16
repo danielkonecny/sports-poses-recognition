@@ -6,3 +6,4 @@ pygame==2.1.2
 tensorflow~=2.7.0
 Pillow==9.0.1
 safe-gpu>=1.4
+scikit-learn>=1.0.2

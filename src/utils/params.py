@@ -167,4 +167,10 @@ def parse_arguments():
         default=None,
         help="Path to dictionary with classes saved with pickle."
     )
+    parser.add_argument(
+        '--neighbors',
+        type=int,
+        default=7,
+        help="Number of neighbors for the k-nearest neighbor classifier."
+    )
     return parser.parse_args()
