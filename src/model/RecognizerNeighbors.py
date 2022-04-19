@@ -27,11 +27,14 @@ def convert_dataset(dataset):
 
 
 class RecognizerNeighbors:
-    def __init__(self, neighbors, encoder_dir, verbose):
-        self.encoder = Encoder(ckpt_dir=encoder_dir, verbose=verbose)
-        self.classifier = KNeighborsClassifier(n_neighbors=neighbors)
+    def __init__(self, directory, neighbors, ckpt_encoder_dir, ckpt_recognizer_dir, verbose):
+        ckpt_encoder_dir = Path(ckpt_encoder_dir)
+        self.ckpt_recognizer_dir = Path(ckpt_recognizer_dir) / "recognizer_neighbors.pkl"
 
-        self.class_names = []
+        self.class_names = [x.stem for x in sorted(directory.iterdir()) if x.is_dir()]
+
+        self.encoder = Encoder(ckpt_dir=ckpt_encoder_dir, verbose=verbose)
+        self.classifier = KNeighborsClassifier(n_neighbors=neighbors)
 
         self.verbose = verbose
         if self.verbose:
@@ -68,8 +71,6 @@ class RecognizerNeighbors:
         if self.verbose:
             print(f'RN -- Number of train images loaded: {tf.data.experimental.cardinality(train_ds)}.')
             print(f'RN -- Number of validation images loaded: {tf.data.experimental.cardinality(val_ds)}.')
-
-        self.class_names = [x.stem for x in sorted(directory.iterdir()) if x.is_dir()]
 
         train_images, train_labels = convert_dataset(train_ds)
         val_images, val_labels = convert_dataset(val_ds)
@@ -108,14 +109,13 @@ class RecognizerNeighbors:
         print(f"RN -- Accuracy of the model is {accuracy:.2%}.")
 
     def save(self):
-        model_path = "ckpts/best/recognizer_neighbors.pkl"
-        pickle.dump(self.classifier, open(model_path, 'wb'))
+        pickle.dump(self.classifier, open(self.ckpt_recognizer_dir, 'wb'))
 
         if self.verbose:
             print("RN - Model saved.")
 
-    def load(self, model_path):
-        self.classifier = pickle.load(open(model_path, 'rb'))
+    def load(self):
+        self.classifier = pickle.load(open(self.ckpt_recognizer_dir, 'rb'))
 
         if self.verbose:
             print("RN - Model loaded.")
@@ -124,11 +124,13 @@ class RecognizerNeighbors:
 def train():
     args = parse_arguments()
 
-    recognizer_neighbors = RecognizerNeighbors(args.neighbors, args.ckpt_dir, args.verbose)
+    recognizer_neighbors = RecognizerNeighbors(args.location, args.neighbors,
+                                               args.ckpt_encoder, args.ckpt_recognizer, args.verbose)
+
     train_images, train_labels, val_images, val_labels = recognizer_neighbors.load_dataset(args.location)
     recognizer_neighbors.fit(train_images, train_labels)
     recognizer_neighbors.save()
-    recognizer_neighbors.load("ckpts/best/recognizer_neighbors.pkl")
+    recognizer_neighbors.load()
     recognizer_neighbors.evaluate(val_images, val_labels)
 
 

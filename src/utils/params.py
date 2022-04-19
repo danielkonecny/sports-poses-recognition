@@ -140,10 +140,16 @@ def parse_arguments():
         help="Use when wanting to restore training from checkpoints."
     )
     parser.add_argument(
-        '--ckpt_dir',
+        '--ckpt_encoder',
         type=str,
-        default='ckpts',
+        default='ckpts_encoder',
         help="Path to directory to restore (if --restore) and store checkpoints."
+    )
+    parser.add_argument(
+        '--ckpt_recognizer',
+        type=str,
+        default='ckpts_recognizer',
+        help="Path to directory to restore and store checkpoints."
     )
     parser.add_argument(
         '--log_dir',

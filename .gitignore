@@ -2,7 +2,7 @@
 out/
 data/
 logs/
-ckpts/
+ckpts_*/
 
 # JetBrains ignores
 .idea/
