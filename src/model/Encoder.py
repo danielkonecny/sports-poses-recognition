@@ -131,12 +131,12 @@ class Encoder:
         self.trn_loss(loss / len(batch))
         self.trn_accuracy(accuracy)
 
-    def train_on_batches(self, train_ds, subdataset_size, batch_size):
+    def train_on_batches(self, train_ds, sub_dataset_size, batch_size):
         start_time = time.perf_counter()
         for batch in batch_provider(train_ds, batch_size):
             self.train_step(batch)
         end_time = time.perf_counter()
-        batch_train_time = (end_time - start_time) / subdataset_size * 1e3
+        batch_train_time = (end_time - start_time) / sub_dataset_size * 1e3
 
         loss, acc = self.log_results(self.train_writer, self.trn_loss, self.trn_accuracy, batch_train_time)
 
@@ -153,12 +153,12 @@ class Encoder:
         self.val_loss(loss / len(batch))
         self.val_accuracy(accuracy)
 
-    def val_on_batches(self, val_ds, subdataset_size, batch_size):
+    def val_on_batches(self, val_ds, sub_dataset_size, batch_size):
         start_time = time.perf_counter()
         for batch in batch_provider(val_ds, batch_size):
             self.val_step(batch)
         end_time = time.perf_counter()
-        batch_val_time = (end_time - start_time) / subdataset_size * 1e3
+        batch_val_time = (end_time - start_time) / sub_dataset_size * 1e3
 
         loss, acc = self.log_results(self.val_writer, self.val_loss, self.val_accuracy, batch_val_time, False)
 
@@ -225,7 +225,8 @@ class Encoder:
         elif images.ndim == 4:
             encoded_images = self.model(images, training=False)
         else:
-            print(f"En -- ", file=sys.stderr)
+            print(f"En -- Dimension of images is incorrect. Has to be 3 (single image) or 4 (multiple images).",
+                  file=sys.stderr)
             encoded_images = []
 
         return encoded_images
@@ -256,7 +257,7 @@ def train():
         args.encoding_dim,
         args.margin,
         args.log_dir,
-        args.ckpt_dir,
+        args.ckpt_encoder,
         args.restore,
         args.verbose
     )
