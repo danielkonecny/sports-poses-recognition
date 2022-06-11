@@ -124,7 +124,7 @@ def train():
     recognizer_neighbors.fit(train_ds, val_ds)
     # recognizer_neighbors.save()
     # recognizer_neighbors.load("ckpts/best/recognizer_neighbors.pkl")
-    # recognizer_neighbors.evaluate(val_ds)
+    recognizer_neighbors.evaluate(val_ds)
 
 
 if __name__ == "__main__":

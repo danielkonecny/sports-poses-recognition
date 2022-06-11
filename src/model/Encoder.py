@@ -65,13 +65,14 @@ class Encoder:
 
         net_input = tf.keras.Input(shape=(height, width, channels))
 
-        data_augmentation = tf.keras.Sequential([
-            layers.RandomFlip("horizontal"),
-            layers.RandomRotation(0.05, fill_mode='nearest'),
-        ])(net_input)
+        # TODO - Disable random flip because of left-right dependency, add some brightness/contrast augmentation.
+        # data_augmentation = tf.keras.Sequential([
+        #     layers.RandomFlip("horizontal"),
+        #     layers.RandomRotation(0.05, fill_mode='nearest')
+        # ])(net_input)
 
-        # backbone = tf.keras.applications.mobilenet.MobileNet(include_top=False, weights='imagenet')(data_augmentation)
-        backbone = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet')(data_augmentation)
+        # backbone = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet')(data_augmentation)
+        backbone = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet')(net_input)
 
         head = layers.AveragePooling2D(pool_size=(7, 7))(backbone)
         head = layers.Flatten()(head)
