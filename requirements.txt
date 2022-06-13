@@ -1,9 +1,10 @@
-numpy~=1.21.2
+numpy~=1.21.4
 opencv-contrib-python==4.5.5.62
-scipy==1.8.0
-matplotlib>=3.4.3
-pygame==2.1.2
+scipy~=1.8.0
+matplotlib~=3.5.1
+pygame~=2.1.2
 tensorflow~=2.7.0
 Pillow==9.0.1
 safe-gpu>=1.4
-scikit-learn>=1.0.2
+scikit-learn~=1.0.2
+tensorboard~=2.7.0
