@@ -31,7 +31,7 @@ class RecognizerNeighbors:
         ckpt_encoder_dir = Path(ckpt_encoder_dir)
         self.ckpt_recognizer_dir = Path(ckpt_recognizer_dir) / "recognizer_neighbors.pkl"
 
-        self.class_names = [x.stem for x in sorted(directory.iterdir()) if x.is_dir()]
+        self.class_names = [x.stem for x in sorted(Path(directory).iterdir()) if x.is_dir()]
 
         self.encoder = Encoder(ckpt_dir=ckpt_encoder_dir, verbose=verbose)
         self.classifier = KNeighborsClassifier(n_neighbors=neighbors)
