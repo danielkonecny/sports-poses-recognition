@@ -33,7 +33,7 @@ def triplet_loss(triplets, margin=0.01):
 
 class Encoder:
     def __init__(self, height=224, width=224, channels=3, encoding_dim=256, margin=0.01,
-                 log_dir='logs', ckpt_dir='ckpts', restore=False, verbose=False):
+                 ckpt_dir='ckpts', restore=False, verbose=False):
 
         self.encoding_dim = encoding_dim
         self.margin = margin
@@ -44,13 +44,8 @@ class Encoder:
         self.val_loss = tf.keras.metrics.Mean('val_loss', dtype=tf.float32)
         self.val_accuracy = tf.keras.metrics.Mean('val_accuracy', dtype=tf.float32)
 
-        self.current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        self.train_writer = tf.summary.create_file_writer(
-            str(Path(log_dir) / f'{self.current_time}/gradient_tape/train')
-        )
-        self.val_writer = tf.summary.create_file_writer(
-            str(Path(log_dir) / f'{self.current_time}/gradient_tape/val')
-        )
+        self.train_writer = None
+        self.val_writer = None
 
         self.verbose = verbose
         if self.verbose:
@@ -96,6 +91,15 @@ class Encoder:
             print(f"En -- Checkpoint restored from {self.manager.latest_checkpoint}")
         elif self.verbose:
             print("En -- Checkpoint initialized in ckpts directory.")
+
+    def set_writers(self, log_dir='logs'):
+        current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.train_writer = tf.summary.create_file_writer(
+            str(Path(log_dir) / f'gradient_tape/{current_time}/train')
+        )
+        self.val_writer = tf.summary.create_file_writer(
+            str(Path(log_dir) / f'gradient_tape/{current_time}/val')
+        )
 
     def log_results(self, writer, loss_metrics, acc_metrics, time_metrics, is_train=True):
         loss = loss_metrics.result()
@@ -257,11 +261,11 @@ def train():
         args.channels,
         args.encoding_dim,
         args.margin,
-        args.log_dir,
         args.ckpt_encoder,
         args.restore,
         args.verbose
     )
+    encoder.set_writers(args.log_dir)
 
     train_ds, val_ds = dataset_handler.get_dataset(args.val_split)
     dataset_size = dataset_handler.get_dataset_size()

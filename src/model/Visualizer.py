@@ -3,17 +3,38 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for visualizing of encoded sports poses.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 13. 06. 2022
+Date: 14. 06. 2022
 """
 
 from pathlib import Path
 import contextlib
+from argparse import ArgumentParser
 
 import numpy as np
 import tensorflow as tf
 from tensorboard.plugins import projector
 
 from src.model.Encoder import Encoder
+
+
+def parse_arguments():
+    parser = ArgumentParser()
+    parser.add_argument(
+        'log_dir',
+        type=str,
+        help="Location of the log directory where visualization data are saved.",
+    )
+    parser.add_argument(
+        'dataset_dir',
+        type=str,
+        help="Location of the data to be visualized.",
+    )
+    parser.add_argument(
+        'encoder_dir',
+        type=str,
+        help="Location of the directory with encoder checkpoint.",
+    )
+    return parser.parse_args()
 
 
 def load_dataset(directory, batch_size=128):
@@ -38,13 +59,13 @@ def load_dataset(directory, batch_size=128):
     return dataset, label_names
 
 
-def save_embeddings(dataset, label_names, ckpt_encoder_dir, log_dir):
+def save_embeddings(dataset, label_names, encoder_dir, log_dir):
     print("Vi - Saving embeddings with labels...")
 
-    encoder = Encoder(ckpt_dir=ckpt_encoder_dir)
+    encoder = Encoder(ckpt_dir=encoder_dir)
     embeddings = None
 
-    metadata_path = log_dir / "metadata.tsv"
+    metadata_path = log_dir / "embedding_metadata.tsv"
     with open(metadata_path, "w") as metadata_file:
         for images, labels in dataset:
             for label in labels:
@@ -57,7 +78,7 @@ def save_embeddings(dataset, label_names, ckpt_encoder_dir, log_dir):
 
     embeddings = tf.Variable(embeddings)
     checkpoint = tf.train.Checkpoint(embedding=embeddings)
-    checkpoint.save(log_dir / "embeddings.ckpt")
+    checkpoint.save(log_dir / "embedding.ckpt")
 
 
 def visualize_embeddings(log_dir):
@@ -67,20 +88,22 @@ def visualize_embeddings(log_dir):
     embedding = config.embeddings.add()
     # The name of the tensor will be suffixed by `/.ATTRIBUTES/VARIABLE_VALUE`.
     embedding.tensor_name = "embedding/.ATTRIBUTES/VARIABLE_VALUE"
-    embedding.metadata_path = 'metadata.tsv'
+    embedding.metadata_path = 'embedding_metadata.tsv'
     projector.visualize_embeddings(log_dir, config)
 
 
 def main():
     print("Launching Visualizer (Vi)...")
 
-    dataset_dir = Path("data/left")
-    ckpt_encoder_dir = Path("ckpts/best")
-    log_dir = Path("logs/visualize")
+    args = parse_arguments()
+
+    log_dir = Path(args.log_dir)
     log_dir.mkdir(exist_ok=True, parents=True)
+    dataset_dir = Path(args.dataset_dir)
+    encoder_dir = Path(args.encoder_dir)
 
     dataset, label_names = load_dataset(dataset_dir)
-    save_embeddings(dataset, label_names, ckpt_encoder_dir, log_dir)
+    save_embeddings(dataset, label_names, encoder_dir, log_dir)
 
     visualize_embeddings(log_dir)
 
