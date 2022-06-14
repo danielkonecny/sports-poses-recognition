@@ -43,20 +43,16 @@ def load_dataset(directory, batch_size=128):
     with contextlib.redirect_stdout(None):
         dataset = tf.keras.utils.image_dataset_from_directory(
             directory,
-            label_mode='int',
             batch_size=batch_size,
             image_size=(224, 224),
             shuffle=False
         )
 
-    print(f'Vi -- Number of images loaded: {tf.data.experimental.cardinality(dataset)}.')
+    print(f'Vi -- Number of batches (size {batch_size}) of images loaded: {tf.data.experimental.cardinality(dataset)}.')
 
-    label_names = []
-    for subdir_path in directory.iterdir():
-        if subdir_path.is_dir():
-            label_names.append(subdir_path.stem)
+    class_names = [x.stem for x in sorted(directory.iterdir()) if x.is_dir()]
 
-    return dataset, label_names
+    return dataset, class_names
 
 
 def save_embeddings(dataset, label_names, encoder_dir, log_dir):
