@@ -3,15 +3,30 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for labeling images.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 11. 04. 2022
+Date: 15. 06. 2022
 """
 
+from argparse import ArgumentParser
 from pathlib import Path
 import pickle
 
 import cv2
 
-from src.utils.params import parse_arguments
+
+def parse_arguments():
+    parser = ArgumentParser()
+    parser.add_argument(
+        'dir',
+        type=str,
+        help="Directory of the (un)sorted images. Sorted ones in their directories named by their classes. "
+             "Unsorted in a directory named \"sort\"."
+    )
+    parser.add_argument(
+        'classes',
+        type=str,
+        help="Path to the dictionary with classes saved with pickle."
+    )
+    return parser.parse_args()
 
 
 def import_classes(classes_location):
@@ -25,10 +40,10 @@ def import_classes(classes_location):
 
 
 class ImageLabeler:
-    def __init__(self, directory, classes_location):
+    def __init__(self, directory, classes):
         self.directory = Path(directory)
-        self.image_paths = Path(directory).glob('*.png')
-        self.classes = import_classes(classes_location)
+        self.image_paths = (self.directory / "sort").rglob('*.png')
+        self.classes = import_classes(classes)
 
         print("Image Labeler (IM) initialized.")
 
@@ -69,8 +84,14 @@ class ImageLabeler:
             (self.directory / self.classes[k]).rmdir()
             del self.classes[k]
         else:
-            (self.directory / self.classes[k]).rename(self.directory / c)
-            self.classes[k] = c
+            if k in self.classes:
+                dst_dir = self.directory / self.classes[k]
+                dst_dir.rename(self.directory / c)
+                self.classes[k] = c
+            else:
+                self.classes[k] = c
+                dst_dir = self.directory / self.classes[k]
+                dst_dir.mkdir()
 
     def export_classes(self):
         file_name = self.directory / 'classes.pkl'
@@ -86,7 +107,7 @@ class ImageLabeler:
 def main():
     args = parse_arguments()
 
-    image_labeler = ImageLabeler(args.location, args.classes_location)
+    image_labeler = ImageLabeler(args.dir, args.classes)
 
     while True:
         print("IM - Choose your task.")

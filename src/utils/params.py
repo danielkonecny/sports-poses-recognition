@@ -168,12 +168,6 @@ def parse_arguments():
         help="Use to turn on Safe GPU command to run on a machine with multiple GPUs."
     )
     parser.add_argument(
-        '--classes_location',
-        type=str,
-        default=None,
-        help="Path to dictionary with classes saved with pickle."
-    )
-    parser.add_argument(
         '--neighbors',
         type=int,
         default=7,
