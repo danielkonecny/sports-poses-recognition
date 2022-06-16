@@ -3,9 +3,10 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Recognize image from a latent vector with a dense neural network.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 19. 04. 2022
+Date: 16. 06. 2022
 """
 
+from argparse import ArgumentParser
 from pathlib import Path
 import sys
 import contextlib
@@ -13,19 +14,64 @@ import contextlib
 import tensorflow as tf
 from tensorflow.keras import layers
 
+from safe_gpu import safe_gpu
+
 from src.model.Encoder import Encoder
-from src.utils.params import parse_arguments
+
+
+def parse_arguments():
+    parser = ArgumentParser()
+    parser.add_argument(
+        'dataset',
+        type=str,
+        help="Location of the directory with dataset.",
+    )
+    parser.add_argument(
+        'encoder_dir',
+        type=str,
+        help="Location of the directory with encoder checkpoint.",
+    )
+    parser.add_argument(
+        '--recognizer_dir',
+        type=str,
+        default='ckpts_recognizer',
+        help="Location of the directory where recognizer checkpoints will be stored."
+    )
+    parser.add_argument(
+        '-b', '--batch_size',
+        type=int,
+        default=16,
+        help="Batch size for training."
+    )
+    parser.add_argument(
+        '-e', '--epochs',
+        type=int,
+        default=5,
+        help="Number of epochs to be performed on a dataset for fitting."
+    )
+    parser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help="Use to turn on additional text output about what is happening."
+    )
+    parser.add_argument(
+        '-g', '--gpu',
+        action='store_true',
+        help="Use to turn on Safe GPU command to run on a machine with multiple GPUs."
+    )
+    return parser.parse_args()
 
 
 class RecognizerNN:
     def __init__(self, directory, ckpt_encoder_dir, ckpt_recognizer_dir, verbose, height=224, width=224, channels=3):
         self.class_names = [x.stem for x in sorted(Path(directory).iterdir()) if x.is_dir()]
+
         ckpt_recognizer_dir = Path(ckpt_recognizer_dir) / "ckpt"
 
         self.classifier = tf.keras.Sequential([
             layers.InputLayer(input_shape=(height, width, channels)),
             Encoder(ckpt_dir=ckpt_encoder_dir, verbose=verbose).model,
-            layers.Dense(128, activation=layers.LeakyReLU(alpha=0.01)),
+            layers.Dense(64, activation=layers.LeakyReLU(alpha=0.01)),
             layers.Dense(len(self.class_names), activation=layers.Softmax())
         ], name='recognizer')
         self.classifier.compile(optimizer=tf.keras.optimizers.Adam(),
@@ -39,7 +85,7 @@ class RecognizerNN:
         if self.verbose:
             print("Recognizer - Dense Neural Network (RD) initialized.")
 
-    def load_dataset(self, directory, batch_size=16):
+    def load_dataset(self, directory, batch_size):
         if self.verbose:
             print("RD - Loading dataset...")
 
@@ -75,22 +121,19 @@ class RecognizerNN:
 
         return train_ds, val_ds
 
-    def fit(self, train_ds, val_ds, epochs=5):
-        if self.verbose:
-            print("RD - Fitting the model...")
-
-        self.classifier.fit(
-            train_ds,
-            epochs=epochs,
-            validation_data=val_ds,
-            callbacks=[self.ckpt_callback]
-        )
-
-    def evaluate(self, val_ds):
+    def evaluate_samples(self, val_ds):
         for batch_image, batch_label in val_ds:
-            print(f"Evaluated: {self.classifier(batch_image)} - Original: {batch_label}")
+            for image, label in zip(batch_image, batch_label):
+                result = self.classifier(tf.expand_dims(image, 0))[0]
 
-        self.classifier.evaluate(val_ds)
+                truth_class_index = tf.math.argmax(label)
+                class_index = tf.math.argmax(result)
+
+                if class_index == truth_class_index:
+                    print(f"CORRECT: {self.class_names[class_index]:>9} = {result[class_index]:6.2%}")
+                else:
+                    print(f"FALSE:   {self.class_names[truth_class_index]:>9} = {result[truth_class_index]:6.2%} "
+                          f"not {self.class_names[class_index]:>9} = {result[class_index]:6.2%}")
 
     def predict(self, images):
         if self.verbose:
@@ -109,22 +152,28 @@ class RecognizerNN:
 
         return predictions
 
-    def save(self):
-        pass
-
-    def load(self):
-        pass
-
 
 def train():
     args = parse_arguments()
 
-    recognizer_neighbors = RecognizerNN(args.location, args.ckpt_encoder, args.ckpt_recognizer, args.verbose)
-    train_ds, val_ds = recognizer_neighbors.load_dataset(args.location)
-    recognizer_neighbors.fit(train_ds, val_ds)
-    # recognizer_neighbors.save()
-    # recognizer_neighbors.load("ckpts/best/recognizer_neighbors.pkl")
-    recognizer_neighbors.evaluate(val_ds)
+    if args.gpu:
+        if args.verbose:
+            print("Running in GPU enabled mode.")
+            print(f"Available GPUs: {tf.config.list_physical_devices('GPU')}")
+        # noinspection PyUnusedLocal
+        gpu_owner = safe_gpu.GPUOwner(placeholder_fn=safe_gpu.tensorflow_placeholder)
+
+    recognizer = RecognizerNN(args.dataset, args.encoder_dir, args.recognizer_dir, args.verbose)
+    train_ds, val_ds = recognizer.load_dataset(args.dataset, args.batch_size)
+
+    recognizer.classifier.fit(
+        train_ds,
+        epochs=args.epochs,
+        validation_data=val_ds,
+        callbacks=[recognizer.ckpt_callback]
+    )
+
+    recognizer.evaluate_samples(val_ds)
 
 
 if __name__ == "__main__":
