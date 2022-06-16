@@ -44,6 +44,12 @@ def parse_arguments():
         help="Batch size for training."
     )
     parser.add_argument(
+        '-s', '--validation_split',
+        type=float,
+        default=0.2,
+        help="Number between 0 and 1 representing proportion of dataset to be used for validation."
+    )
+    parser.add_argument(
         '-e', '--epochs',
         type=int,
         default=5,
@@ -63,29 +69,33 @@ def parse_arguments():
 
 
 class RecognizerNN:
-    def __init__(self, directory, ckpt_encoder_dir, ckpt_recognizer_dir, verbose, height=224, width=224, channels=3):
+    def __init__(self, directory, encoder_dir, recognizer_dir, verbose, width=224, height=224, channels=3):
         self.class_names = [x.stem for x in sorted(Path(directory).iterdir()) if x.is_dir()]
 
-        ckpt_recognizer_dir = Path(ckpt_recognizer_dir) / "ckpt"
-
         self.classifier = tf.keras.Sequential([
-            layers.InputLayer(input_shape=(height, width, channels)),
-            Encoder(ckpt_dir=ckpt_encoder_dir, verbose=verbose).model,
+            layers.InputLayer(input_shape=(width, height, channels)),
+            Encoder(ckpt_dir=encoder_dir, verbose=verbose).model,
             layers.Dense(64, activation=layers.LeakyReLU(alpha=0.01)),
             layers.Dense(len(self.class_names), activation=layers.Softmax())
         ], name='recognizer')
+
         self.classifier.compile(optimizer=tf.keras.optimizers.Adam(),
                                 loss=tf.keras.losses.CategoricalCrossentropy(),
                                 metrics=['accuracy'])
-        self.ckpt_callback = tf.keras.callbacks.ModelCheckpoint(filepath=ckpt_recognizer_dir,
-                                                                save_weights_only=True,
-                                                                verbose=1)
+
+        self.ckpt_callback = tf.keras.callbacks.ModelCheckpoint(
+            filepath=(Path(recognizer_dir) / "ckpt-epoch{epoch:02d}-val_acc{val_accuracy:.2f}"),
+            save_weights_only=True,
+            monitor='val_accuracy',
+            mode='max',
+            verbose=1
+        )
 
         self.verbose = verbose
         if self.verbose:
             print("Recognizer - Dense Neural Network (RD) initialized.")
 
-    def load_dataset(self, directory, batch_size):
+    def load_dataset(self, directory, batch_size, validation_split, width=224, height=224):
         if self.verbose:
             print("RD - Loading dataset...")
 
@@ -98,18 +108,18 @@ class RecognizerNN:
                 directory,
                 label_mode='categorical',
                 batch_size=batch_size,
-                image_size=(224, 224),
+                image_size=(width, height),
                 seed=random_seed,
-                validation_split=0.2,
+                validation_split=validation_split,
                 subset="training"
             )
             val_ds = tf.keras.utils.image_dataset_from_directory(
                 directory,
                 label_mode='categorical',
                 batch_size=batch_size,
-                image_size=(224, 224),
+                image_size=(width, height),
                 seed=random_seed,
-                validation_split=0.2,
+                validation_split=validation_split,
                 subset="validation"
             )
 
@@ -164,7 +174,7 @@ def train():
         gpu_owner = safe_gpu.GPUOwner(placeholder_fn=safe_gpu.tensorflow_placeholder)
 
     recognizer = RecognizerNN(args.dataset, args.encoder_dir, args.recognizer_dir, args.verbose)
-    train_ds, val_ds = recognizer.load_dataset(args.dataset, args.batch_size)
+    train_ds, val_ds = recognizer.load_dataset(args.dataset, args.batch_size, args.validation_split)
 
     recognizer.classifier.fit(
         train_ds,
