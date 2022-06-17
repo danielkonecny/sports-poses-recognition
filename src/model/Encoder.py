@@ -290,7 +290,7 @@ class Encoder:
 
         return best_epoch, best_path
 
-    def fine_tune(self, trn_ds, val_ds, epochs, dataset_size, batch_size, best_path=None):
+    def finetune(self, trn_ds, val_ds, epochs, dataset_size, batch_size, best_path=None):
         if self.verbose:
             print("En - Fine tuning the model...")
 
@@ -360,9 +360,9 @@ def train():
         print("En - Training finished.")
         print(f"En - Best accuracy in training was achieved in epoch {best_epoch} and is saved at {best_path}.")
 
-    if args.fine_tune > 0:
-        best_epoch, best_path = encoder.fine_tune(train_ds, val_ds, args.finetune_epochs,
-                                                  dataset_size, args.batch_size, best_path)
+    if args.finetune_epochs > 0:
+        best_epoch, best_path = encoder.finetune(train_ds, val_ds, args.finetune_epochs,
+                                                 dataset_size, args.batch_size, best_path)
         if args.verbose:
             print("En - Fine-tuning finished.")
             print(f"En - Best accuracy in fine-tuning was achieved in epoch {best_epoch} and is saved at {best_path}.")
