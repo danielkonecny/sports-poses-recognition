@@ -3,15 +3,41 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for loading training data and rearranging them for specific training purposes.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 06. 04. 2022
+Date: 17. 06. 2022
 """
 
+from argparse import ArgumentParser
 from pathlib import Path
 
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
-from src.utils.params import parse_arguments
+
+def parse_arguments():
+    parser = ArgumentParser()
+    parser.add_argument(
+        'dataset',
+        type=str,
+        help="Location of the directory with dataset.",
+    )
+    parser.add_argument(
+        '-b', '--batch_size',
+        type=int,
+        default=16,
+        help="Batch size for training."
+    )
+    parser.add_argument(
+        '-s', '--validation_split',
+        type=float,
+        default=0.2,
+        help="Number between 0 and 1 representing proportion of dataset to be used for validation."
+    )
+    parser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help="Use to turn on additional text output about what is happening."
+    )
+    return parser.parse_args()
 
 
 def load_metadata(file_path):
@@ -52,26 +78,18 @@ def batch_provider(ds, batch_size=30):
 
 
 class DatasetHandler:
-    def __init__(self, directory, steps, cameras, height, width, verbose=False):
+    def __init__(self, directory, verbose=False):
         self.directory = Path(directory)
 
-        self.steps = steps
-        self.cameras = cameras
-        self.height = height
-        self.width = width
-
         self.verbose = verbose
-
         if self.verbose:
             print("Dataset Handler (DH) initialized.")
 
-    def get_dataset_size(self, val_split=0.2):
-        path = Path(self.directory)
-
-        img_count = len(list(path.glob('*/cam0/*.png')))
+    def get_dataset_size(self, validation_split):
+        img_count = len(list(self.directory.glob('*/cam0/*.png')))
         triplet_count = (img_count - 1) * 6
-        train_count = int(round((1 - val_split) * triplet_count))
-        val_count = int(round(val_split * triplet_count))
+        train_count = int(round((1 - validation_split) * triplet_count))
+        val_count = int(round(validation_split * triplet_count))
 
         return train_count, val_count
 
@@ -117,7 +135,7 @@ class DatasetHandler:
 
         return ds, triplet_count
 
-    def get_dataset(self, val_split):
+    def get_dataset(self, validation_split):
         if self.verbose:
             print("DH - Loading train and validation dataset...")
 
@@ -138,7 +156,7 @@ class DatasetHandler:
         buffer_size = 256
         ds = ds.shuffle(buffer_size, reshuffle_each_iteration=False)
 
-        val_size = int(round(size * val_split))
+        val_size = int(round(size * validation_split))
         train_ds = ds.skip(val_size)
         val_ds = ds.take(val_size)
 
@@ -149,18 +167,14 @@ def test():
     args = parse_arguments()
 
     dataset_handler = DatasetHandler(
-        args.location,
-        args.steps,
-        args.cameras,
-        args.height,
-        args.width,
+        args.dataset,
         args.verbose
     )
 
-    train_size, val_size = dataset_handler.get_dataset_size(args.val_split)
+    train_size, val_size = dataset_handler.get_dataset_size(args.validation_split)
     print(train_size, val_size)
 
-    train_ds, val_ds = dataset_handler.get_dataset(args.val_split)
+    train_ds, val_ds = dataset_handler.get_dataset(args.validation_split)
 
     for epoch in range(1):
         print(f"\nEpoch {epoch}")

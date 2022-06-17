@@ -3,9 +3,10 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 09. 04. 2022
+Date: 17. 06. 2022
 """
 
+from argparse import ArgumentParser
 from pathlib import Path
 import sys
 import time
@@ -17,7 +18,97 @@ from tensorflow.keras import layers
 from safe_gpu import safe_gpu
 
 from src.model.DatasetHandler import DatasetHandler, batch_provider
-from src.utils.params import parse_arguments
+
+
+def parse_arguments():
+    parser = ArgumentParser()
+    parser.add_argument(
+        'dataset',
+        type=str,
+        help="Location of the directory with dataset.",
+    )
+    parser.add_argument(
+        '-E', '--encoder_dir',
+        type=str,
+        default='ckpts_encoder',
+        help="Path to directory where encoder checkpoints will be stored.",
+    )
+    parser.add_argument(
+        '-L', '--log_dir',
+        type=str,
+        default='logs',
+        help="Path to directory where logs will be stored."
+    )
+    parser.add_argument(
+        '-b', '--batch_size',
+        type=int,
+        default=16,
+        help="Batch size for training."
+    )
+    parser.add_argument(
+        '-s', '--validation_split',
+        type=float,
+        default=0.2,
+        help="Number between 0 and 1 representing proportion of dataset to be used for validation."
+    )
+    parser.add_argument(
+        '-e', '--fit_epochs',
+        type=int,
+        default=5,
+        help="Number of epochs to be performed on a dataset for fitting."
+    )
+    parser.add_argument(
+        '-f', '--finetune_epochs',
+        type=int,
+        default=5,
+        help="Number of epochs to be performed on a dataset for fine-tuning."
+    )
+    parser.add_argument(
+        '-d', '--encoding_dim',
+        type=int,
+        default=256,
+        help="Dimension of latent space in which an image is represented."
+    )
+    parser.add_argument(
+        '-m', '--margin',
+        type=float,
+        default=0.01,
+        help="Margin used for triplet loss - positive has to be at least by a margin closer to anchor than negative."
+    )
+    parser.add_argument(
+        '-r', '--restore',
+        action='store_true',
+        help="Use when wanting to restore training from checkpoints."
+    )
+    parser.add_argument(
+        '-H', '--height',
+        type=int,
+        default=224,
+        help="Dimensions of a training image - height."
+    )
+    parser.add_argument(
+        '-W', '--width',
+        type=int,
+        default=224,
+        help="Dimensions of a training image - width."
+    )
+    parser.add_argument(
+        '-C', '--channels',
+        type=int,
+        default=3,
+        help="Number of channels in used images (e.g. RGB = 3)."
+    )
+    parser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help="Use to turn on additional text output about what is happening."
+    )
+    parser.add_argument(
+        '-g', '--gpu',
+        action='store_true',
+        help="Use to turn on Safe GPU command to run on a machine with multiple GPUs."
+    )
+    return parser.parse_args()
 
 
 @tf.function
@@ -33,7 +124,7 @@ def triplet_loss(triplets, margin=0.01):
 
 class Encoder:
     def __init__(self, height=224, width=224, channels=3, encoding_dim=256, margin=0.01,
-                 ckpt_dir='ckpts', restore=False, verbose=False):
+                 encoder_dir='ckpts_encoder', restore=False, verbose=False):
 
         self.encoding_dim = encoding_dim
         self.margin = margin
@@ -52,7 +143,7 @@ class Encoder:
             print("Encoder (En) initialized.")
 
         self.create_model(height, width, channels, encoding_dim)
-        self.set_checkpoints(ckpt_dir, restore)
+        self.set_checkpoints(encoder_dir, restore)
 
     def create_model(self, height, width, channels, encoding_dim):
         if self.verbose:
@@ -60,14 +151,12 @@ class Encoder:
 
         net_input = tf.keras.Input(shape=(height, width, channels))
 
-        # TODO - Disable random flip because of left-right dependency, add some brightness/contrast augmentation.
-        # data_augmentation = tf.keras.Sequential([
-        #     layers.RandomFlip("horizontal"),
-        #     layers.RandomRotation(0.05, fill_mode='nearest')
-        # ])(net_input)
+        # TODO - add "layers.RandomBrightness(0.2)," when running on TF 2.9.
+        data_augmentation = tf.keras.Sequential([
+            layers.RandomContrast(0.2)
+        ])(net_input)
 
-        # backbone = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet')(data_augmentation)
-        backbone = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet')(net_input)
+        backbone = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet')(data_augmentation)
 
         head = layers.AveragePooling2D(pool_size=(7, 7))(backbone)
         head = layers.Flatten()(head)
@@ -248,11 +337,7 @@ def train():
         gpu_owner = safe_gpu.GPUOwner(placeholder_fn=safe_gpu.tensorflow_placeholder)
 
     dataset_handler = DatasetHandler(
-        args.location,
-        args.steps,
-        args.cameras,
-        args.height,
-        args.width,
+        args.dataset,
         args.verbose
     )
     encoder = Encoder(
@@ -261,22 +346,22 @@ def train():
         args.channels,
         args.encoding_dim,
         args.margin,
-        args.ckpt_encoder,
+        args.encoder_dir,
         args.restore,
         args.verbose
     )
     encoder.set_writers(args.log_dir)
 
-    train_ds, val_ds = dataset_handler.get_dataset(args.val_split)
-    dataset_size = dataset_handler.get_dataset_size()
+    train_ds, val_ds = dataset_handler.get_dataset(args.validation_split)
+    dataset_size = dataset_handler.get_dataset_size(args.validation_split)
 
-    best_epoch, best_path = encoder.fit(train_ds, val_ds, args.epochs, dataset_size, args.batch_size)
+    best_epoch, best_path = encoder.fit(train_ds, val_ds, args.fit_epochs, dataset_size, args.batch_size)
     if args.verbose:
         print("En - Training finished.")
         print(f"En - Best accuracy in training was achieved in epoch {best_epoch} and is saved at {best_path}.")
 
     if args.fine_tune > 0:
-        best_epoch, best_path = encoder.fine_tune(train_ds, val_ds, args.fine_tune,
+        best_epoch, best_path = encoder.fine_tune(train_ds, val_ds, args.finetune_epochs,
                                                   dataset_size, args.batch_size, best_path)
         if args.verbose:
             print("En - Fine-tuning finished.")

@@ -17,16 +17,16 @@ def parse_arguments():
         help="Location of the processed data.",
     )
     parser.add_argument(
-        '-W', '--width',
-        type=int,
-        default=224,
-        help="Dimensions of a training image - width."
-    )
-    parser.add_argument(
         '-H', '--height',
         type=int,
         default=224,
         help="Dimensions of a training image - height."
+    )
+    parser.add_argument(
+        '-W', '--width',
+        type=int,
+        default=224,
+        help="Dimensions of a training image - width."
     )
     parser.add_argument(
         '-C', '--channels',
@@ -99,47 +99,6 @@ def parse_arguments():
         help="Location where the dataset images will be exported in scene*/cam* subdirectories."
     )
     parser.add_argument(
-        '-e', '--epochs',
-        type=int,
-        default=10,
-        help="Number of epochs to be performed on a dataset for fitting."
-    )
-    parser.add_argument(
-        '--fine_tune',
-        type=int,
-        default=10,
-        help="Number of epochs to be performed on a dataset for fine-tuning."
-    )
-    parser.add_argument(
-        '-b', '--batch_size',
-        type=int,
-        default=64,
-        help="Number of triplets in a batch."
-    )
-    parser.add_argument(
-        '-d', '--encoding_dim',
-        type=int,
-        default=256,
-        help="Dimension of latent space in which an image is represented."
-    )
-    parser.add_argument(
-        '-m', '--margin',
-        type=float,
-        default=0.01,
-        help="Margin used for triplet loss - positive has to be at least by a margin closer to anchor than negative."
-    )
-    parser.add_argument(
-        '-V', '--val_split',
-        type=float,
-        default=0.2,
-        help="Number between 0 and 1 representing proportion of dataset to be used for validation."
-    )
-    parser.add_argument(
-        '-r', '--restore',
-        action='store_true',
-        help="Use when wanting to restore training from checkpoints."
-    )
-    parser.add_argument(
         '--ckpt_encoder',
         type=str,
         default='ckpts_encoder',
@@ -152,20 +111,9 @@ def parse_arguments():
         help="Path to directory to restore and store checkpoints."
     )
     parser.add_argument(
-        '--log_dir',
-        type=str,
-        default='logs',
-        help="Path to directory where logs will be stored."
-    )
-    parser.add_argument(
         '-v', '--verbose',
         action='store_true',
         help="Use to turn on additional text output about what is happening."
-    )
-    parser.add_argument(
-        '-g', '--gpu',
-        action='store_true',
-        help="Use to turn on Safe GPU command to run on a machine with multiple GPUs."
     )
     parser.add_argument(
         '--neighbors',
