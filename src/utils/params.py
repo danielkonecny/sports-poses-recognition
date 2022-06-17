@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for argument parsing.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 04. 04. 2022
+Date: 17. 06. 2022
 """
 
 from argparse import ArgumentParser
@@ -99,26 +99,8 @@ def parse_arguments():
         help="Location where the dataset images will be exported in scene*/cam* subdirectories."
     )
     parser.add_argument(
-        '--ckpt_encoder',
-        type=str,
-        default='ckpts_encoder',
-        help="Path to directory to restore (if --restore) and store checkpoints."
-    )
-    parser.add_argument(
-        '--ckpt_recognizer',
-        type=str,
-        default='ckpts_recognizer',
-        help="Path to directory to restore and store checkpoints."
-    )
-    parser.add_argument(
         '-v', '--verbose',
         action='store_true',
         help="Use to turn on additional text output about what is happening."
-    )
-    parser.add_argument(
-        '--neighbors',
-        type=int,
-        default=7,
-        help="Number of neighbors for the k-nearest neighbor classifier."
     )
     return parser.parse_args()

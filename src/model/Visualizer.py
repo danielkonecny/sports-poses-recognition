@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for visualizing of encoded sports poses.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 14. 06. 2022
+Date: 17. 06. 2022
 """
 
 from pathlib import Path
@@ -58,7 +58,7 @@ def load_dataset(directory, batch_size=128):
 def save_embeddings(dataset, label_names, encoder_dir, log_dir):
     print("Vi - Saving embeddings with labels...")
 
-    encoder = Encoder(ckpt_dir=encoder_dir)
+    encoder = Encoder(encoder_dir=encoder_dir)
     embeddings = None
 
     metadata_path = log_dir / "embedding_metadata.tsv"

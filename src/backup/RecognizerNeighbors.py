@@ -17,6 +17,28 @@ from src.model.Encoder import Encoder
 from src.utils.params import parse_arguments
 
 
+"""
+parser.add_argument(
+    '--ckpt_encoder',
+    type=str,
+    default='ckpts_encoder',
+    help="Path to directory to restore (if --restore) and store checkpoints."
+)
+parser.add_argument(
+    '--ckpt_recognizer',
+    type=str,
+    default='ckpts_recognizer',
+    help="Path to directory to restore and store checkpoints."
+)
+parser.add_argument(
+    '--neighbors',
+    type=int,
+    default=7,
+    help="Number of neighbors for the k-nearest neighbor classifier."
+)
+"""
+
+
 def convert_dataset(dataset):
     images, labels = zip(*dataset)
 
@@ -33,7 +55,7 @@ class RecognizerNeighbors:
 
         self.class_names = [x.stem for x in sorted(Path(directory).iterdir()) if x.is_dir()]
 
-        self.encoder = Encoder(ckpt_dir=ckpt_encoder_dir, verbose=verbose)
+        self.encoder = Encoder(encoder_dir=ckpt_encoder_dir, verbose=verbose)
         self.classifier = KNeighborsClassifier(n_neighbors=neighbors)
 
         self.verbose = verbose

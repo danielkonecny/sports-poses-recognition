@@ -68,13 +68,13 @@ def parse_arguments():
     return parser.parse_args()
 
 
-class RecognizerNN:
+class Recognizer:
     def __init__(self, directory, encoder_dir, recognizer_dir, verbose, height=224, width=224, channels=3):
         self.class_names = [x.stem for x in sorted(Path(directory).iterdir()) if x.is_dir()]
 
         self.classifier = tf.keras.Sequential([
             layers.InputLayer(input_shape=(height, width, channels)),
-            Encoder(ckpt_dir=encoder_dir, verbose=verbose).model,
+            Encoder(encoder_dir=encoder_dir, verbose=verbose).model,
             layers.Dense(64, activation=layers.LeakyReLU(alpha=0.01)),
             layers.Dense(len(self.class_names), activation=layers.Softmax())
         ], name='recognizer')
@@ -173,7 +173,7 @@ def train():
         # noinspection PyUnusedLocal
         gpu_owner = safe_gpu.GPUOwner(placeholder_fn=safe_gpu.tensorflow_placeholder)
 
-    recognizer = RecognizerNN(args.dataset, args.encoder_dir, args.recognizer_dir, args.verbose)
+    recognizer = Recognizer(args.dataset, args.encoder_dir, args.recognizer_dir, args.verbose)
     train_ds, val_ds = recognizer.load_dataset(args.dataset, args.batch_size, args.validation_split)
 
     recognizer.classifier.fit(
