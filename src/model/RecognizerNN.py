@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Recognize image from a latent vector with a dense neural network.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 16. 06. 2022
+Date: 17. 06. 2022
 """
 
 from argparse import ArgumentParser
@@ -69,11 +69,11 @@ def parse_arguments():
 
 
 class RecognizerNN:
-    def __init__(self, directory, encoder_dir, recognizer_dir, verbose, width=224, height=224, channels=3):
+    def __init__(self, directory, encoder_dir, recognizer_dir, verbose, height=224, width=224, channels=3):
         self.class_names = [x.stem for x in sorted(Path(directory).iterdir()) if x.is_dir()]
 
         self.classifier = tf.keras.Sequential([
-            layers.InputLayer(input_shape=(width, height, channels)),
+            layers.InputLayer(input_shape=(height, width, channels)),
             Encoder(ckpt_dir=encoder_dir, verbose=verbose).model,
             layers.Dense(64, activation=layers.LeakyReLU(alpha=0.01)),
             layers.Dense(len(self.class_names), activation=layers.Softmax())
@@ -95,7 +95,7 @@ class RecognizerNN:
         if self.verbose:
             print("Recognizer - Dense Neural Network (RD) initialized.")
 
-    def load_dataset(self, directory, batch_size, validation_split, width=224, height=224):
+    def load_dataset(self, directory, batch_size, validation_split, height=224, width=224):
         if self.verbose:
             print("RD - Loading dataset...")
 
@@ -108,7 +108,7 @@ class RecognizerNN:
                 directory,
                 label_mode='categorical',
                 batch_size=batch_size,
-                image_size=(width, height),
+                image_size=(height, width),
                 seed=random_seed,
                 validation_split=validation_split,
                 subset="training"
@@ -117,7 +117,7 @@ class RecognizerNN:
                 directory,
                 label_mode='categorical',
                 batch_size=batch_size,
-                image_size=(width, height),
+                image_size=(height, width),
                 seed=random_seed,
                 validation_split=validation_split,
                 subset="validation"
