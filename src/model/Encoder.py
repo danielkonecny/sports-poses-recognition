@@ -30,7 +30,7 @@ def parse_arguments():
     parser.add_argument(
         '-E', '--encoder_dir',
         type=str,
-        default='ckpts_encoder',
+        default='ckpts/encoder',
         help="Path to directory where encoder checkpoints will be stored.",
     )
     parser.add_argument(
@@ -124,7 +124,7 @@ def triplet_loss(triplets, margin=0.01):
 
 class Encoder:
     def __init__(self, height=224, width=224, channels=3, encoding_dim=256, margin=0.01,
-                 encoder_dir='ckpts_encoder', restore=False, verbose=False):
+                 encoder_dir='ckpts/encoder', restore=False, verbose=False):
 
         self.encoding_dim = encoding_dim
         self.margin = margin
@@ -280,6 +280,7 @@ class Encoder:
 
             self.ckpt.step.assign_add(1)
 
+            # TODO - Implement as tf.keras.callbacks.History if possible.
             if accuracy > best_acc:
                 best_epoch = index
                 best_acc = accuracy
