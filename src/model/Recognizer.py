@@ -118,7 +118,7 @@ class Recognizer:
     def __init__(self, model):
         self.model = model
 
-        logging.info("Recognizer - Dense Neural Network (RD) initialized.")
+        logging.info("Recognizer (Re) initialized.")
 
     @classmethod
     def create(cls, encoder_dir, label_count):
@@ -152,7 +152,7 @@ class Recognizer:
 
     @staticmethod
     def load_dataset(directory, batch_size, validation_split, height=224, width=224):
-        logging.info("RD - Loading dataset...")
+        logging.info("Re - Loading dataset...")
 
         directory = Path(directory)
 
@@ -178,15 +178,15 @@ class Recognizer:
                 subset="validation"
             )
 
-        logging.info(f'RD -- Number of train batches (size {batch_size}) loaded: '
+        logging.info(f'Re -- Number of train batches (size {batch_size}) loaded: '
                      f'{tf.data.experimental.cardinality(train_ds)}.')
-        logging.info(f'RD -- Number of validation batches (size {batch_size}) loaded: '
+        logging.info(f'Re -- Number of validation batches (size {batch_size}) loaded: '
                      f'{tf.data.experimental.cardinality(val_ds)}.')
 
         return train_ds, val_ds
 
     def load_images(self, path):
-        logging.info("RD - Loading images...")
+        logging.info("Re - Loading images...")
 
         path = Path(path)
 
@@ -203,7 +203,7 @@ class Recognizer:
                 shuffle=False
             )
 
-        logging.info(f'RD -- Number of images loaded: {tf.data.experimental.cardinality(images)}.')
+        logging.info(f'Re -- Number of images loaded: {tf.data.experimental.cardinality(images)}.')
 
         return images
 
@@ -222,7 +222,7 @@ class Recognizer:
                           f"not {labels[class_index]:>9} = {result[class_index]:6.2%}")
 
     def predict(self, images):
-        logging.info("En - Encoding images with the model...")
+        logging.info("Re - Encoding images with the model...")
 
         predictions = []
 
@@ -239,6 +239,7 @@ def fit(args):
     recognizer = Recognizer.create(args.encoder_dir, len(labels))
     train_ds, val_ds = recognizer.load_dataset(args.dataset, args.batch_size, args.validation_split)
 
+    logging.info("Re - Fitting the model...")
     history = recognizer.model.fit(
         train_ds,
         epochs=args.epochs,
@@ -259,10 +260,13 @@ def fit(args):
     val_accuracy = tf.math.reduce_max(history.history['val_accuracy'])
     recognizer.model.load_weights(Path(args.ckpt_dir) / f"ckpt-epoch{epoch:02d}-val_acc{val_accuracy:.2f}")
 
-    recognizer.model.evaluate(val_ds)
+    logging.info(f"Re - Restored checkpoint from epoch {epoch:02d} with validation accuracy {val_accuracy}.")
 
+    logging.info("Re - Evaluating the model...")
+    recognizer.model.evaluate(val_ds)
     recognizer.evaluate_samples(val_ds, labels)
 
+    logging.info("Re - Saving the model...")
     # TODO - Change to this when upgraded above TF 2.7: recognizer.model.save(args.recognizer_dir)
     recognizer.model.save(Path(args.recognizer_dir) / "recognizer.h5", save_format='h5')
 
@@ -273,6 +277,8 @@ def fit(args):
 
 
 def predict(args):
+    logging.info("Re - Predicting images with recognizer...")
+
     with open(Path(args.labels)) as label_file:
         labels = label_file.readlines()
         labels = [label.rstrip() for label in labels]
