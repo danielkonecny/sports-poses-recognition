@@ -87,9 +87,9 @@ def parse_arguments():
         help='Options when predicting from the recognizer model.'
     )
     parser_predict.add_argument(
-        'dataset',
+        'images',
         type=str,
-        help="Location of the directory with dataset."
+        help="Location of the directory with images to predict."
     )
     parser_predict.add_argument(
         'recognizer',
@@ -239,7 +239,7 @@ def fit(args):
     recognizer = Recognizer.create(args.encoder_dir, len(labels))
     train_ds, val_ds = recognizer.load_dataset(args.dataset, args.batch_size, args.validation_split)
 
-    recognizer.model.fit(
+    history = recognizer.model.fit(
         train_ds,
         epochs=args.epochs,
         validation_data=val_ds,
@@ -253,6 +253,13 @@ def fit(args):
             )
         ]
     )
+
+    # Restore weights of model that had the highest accuracy on validation dataset.
+    epoch = tf.math.argmax(history.history['val_accuracy']) + 1
+    val_accuracy = tf.math.reduce_max(history.history['val_accuracy'])
+    recognizer.model.load_weights(Path(args.ckpt_dir) / f"ckpt-epoch{epoch:02d}-val_acc{val_accuracy:.2f}")
+
+    recognizer.model.evaluate(val_ds)
 
     recognizer.evaluate_samples(val_ds, labels)
 
@@ -271,7 +278,7 @@ def predict(args):
         labels = [label.rstrip() for label in labels]
 
     recognizer = Recognizer.load(args.recognizer)
-    images = recognizer.load_images(args.dataset)
+    images = recognizer.load_images(args.images)
 
     predictions = recognizer.predict(images)
 
