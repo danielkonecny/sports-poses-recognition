@@ -38,6 +38,12 @@ def parse_arguments():
         help="Number of epochs to be performed on a dataset for fitting."
     )
     parser.add_argument(
+        '-S', '--seed',
+        type=int,
+        default=None,
+        help="Seed for dataset shuffling - use to get consistency for training and validation datasets."
+    )
+    parser.add_argument(
         '-H', '--height',
         type=int,
         default=224,
@@ -81,7 +87,10 @@ def main():
         metrics=['accuracy']
     )
 
-    random_seed = tf.random.uniform(shape=(), minval=1, maxval=2 ** 32, dtype=tf.int64)
+    if args.seed is None:
+        random_seed = tf.random.uniform(shape=(), minval=1, maxval=2 ** 32, dtype=tf.int64)
+    else:
+        random_seed = args.seed
     train_ds = tf.keras.utils.image_dataset_from_directory(
         dataset,
         label_mode='categorical',

@@ -72,6 +72,12 @@ def parse_arguments():
         help="Number of epochs to be performed on a dataset for fitting."
     )
     parser_fit.add_argument(
+        '-S', '--seed',
+        type=int,
+        default=None,
+        help="Seed for dataset shuffling - use to get consistency for training and validation datasets."
+    )
+    parser_fit.add_argument(
         '-g', '--gpu',
         action='store_true',
         help="Use to turn on Safe GPU command to run on a machine with multiple GPUs."
@@ -151,12 +157,15 @@ class Recognizer:
         return cls(model)
 
     @staticmethod
-    def load_dataset(directory, batch_size, validation_split, height=224, width=224):
+    def load_dataset(directory, batch_size, validation_split, seed=None, height=224, width=224):
         logging.info("Re - Loading dataset...")
 
         directory = Path(directory)
 
-        random_seed = tf.random.uniform(shape=(), minval=1, maxval=2 ** 32, dtype=tf.int64)
+        if seed is None:
+            random_seed = tf.random.uniform(shape=(), minval=1, maxval=2 ** 32, dtype=tf.int64)
+        else:
+            random_seed = seed
 
         with contextlib.redirect_stdout(None):
             train_ds = tf.keras.utils.image_dataset_from_directory(
@@ -237,7 +246,7 @@ def fit(args):
     labels = [x.stem for x in sorted(Path(args.dataset).iterdir()) if x.is_dir()]
 
     recognizer = Recognizer.create(args.encoder_dir, len(labels))
-    train_ds, val_ds = recognizer.load_dataset(args.dataset, args.batch_size, args.validation_split)
+    train_ds, val_ds = recognizer.load_dataset(args.dataset, args.batch_size, args.validation_split, args.seed)
 
     logging.info("Re - Fitting the model...")
     history = recognizer.model.fit(
