@@ -10,6 +10,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 import logging
 import contextlib
+import csv
 
 import tensorflow as tf
 from tensorflow.keras import layers
@@ -82,6 +83,11 @@ def parse_arguments():
         type=int,
         default=None,
         help="Seed for dataset shuffling - use to get consistency for training and validation datasets."
+    )
+    parser_fit.add_argument(
+        '-E', '--export_accuracy',
+        action='store_true',
+        help="Use to turn on exporting of validation accuracy to file logs/accuracies.csv."
     )
     parser_fit.add_argument(
         '-g', '--gpu',
@@ -193,8 +199,10 @@ class Recognizer:
                 validation_split=validation_split,
                 subset="validation"
             )
-        train_ds = train_ds.shard(num_shards=tf.cast(1 / dataset_portion, tf.int64), index=0)
-        val_ds = val_ds.shard(num_shards=tf.cast(1 / dataset_portion, tf.int64), index=0)
+        # FIXME - Sharding causes validation TF.data.Dataset to somehow not be consistent.
+        if dataset_portion < 1.:
+            train_ds = train_ds.shard(num_shards=tf.cast(1 / dataset_portion, tf.int64), index=0)
+            val_ds = val_ds.shard(num_shards=tf.cast(1 / dataset_portion, tf.int64), index=0)
 
         logging.info(f'Re -- Number of train batches (size {batch_size}) loaded: '
                      f'{tf.data.experimental.cardinality(train_ds)}.')
@@ -250,6 +258,20 @@ class Recognizer:
 
         return predictions
 
+    @staticmethod
+    def export_accuracies(validation_split, seed, val_accuracy):
+        log_file_path = Path("logs/accuracies.csv")
+        if not log_file_path.exists():
+            fields = ['Model', 'Training Data Portion', 'Seed', 'Validation Accuracy']
+            with open(log_file_path, 'w') as f:
+                writer = csv.writer(f)
+                writer.writerow(fields)
+
+        fields = ['Self-Supervised', f'{1 - validation_split}', f'{seed}', f'{val_accuracy:.4f}']
+        with open(log_file_path, 'a') as f:
+            writer = csv.writer(f)
+            writer.writerow(fields)
+
 
 def fit(args):
     labels = [x.stem for x in sorted(Path(args.dataset).iterdir()) if x.is_dir()]
@@ -278,8 +300,10 @@ def fit(args):
     epoch = tf.math.argmax(history.history['val_accuracy']) + 1
     val_accuracy = tf.math.reduce_max(history.history['val_accuracy'])
     recognizer.model.load_weights(Path(args.ckpt_dir) / f"ckpt-epoch{epoch:02d}-val_acc{val_accuracy:.2f}")
+    logging.info(f"Re - Restored checkpoint from epoch {epoch:02d} with validation accuracy {val_accuracy:.6f}.")
 
-    logging.info(f"Re - Restored checkpoint from epoch {epoch:02d} with validation accuracy {val_accuracy}.")
+    if args.export_accuracy:
+        recognizer.export_accuracies(args.validation_split, args.seed, val_accuracy)
 
     logging.info("Re - Evaluating the model...")
     recognizer.model.evaluate(val_ds)

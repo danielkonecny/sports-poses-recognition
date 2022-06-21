@@ -8,6 +8,7 @@ Date: 21. 06. 2022
 
 from argparse import ArgumentParser
 from pathlib import Path
+import csv
 import tensorflow as tf
 from safe_gpu import safe_gpu
 
@@ -50,6 +51,11 @@ def parse_arguments():
         help="Seed for dataset shuffling - use to get consistency for training and validation datasets."
     )
     parser.add_argument(
+        '-E', '--export_accuracy',
+        action='store_true',
+        help="Use to turn on exporting of validation accuracy to file logs/accuracies.csv."
+    )
+    parser.add_argument(
         '-H', '--height',
         type=int,
         default=224,
@@ -72,6 +78,20 @@ def parse_arguments():
         help="Use to turn on Safe GPU command to run on a machine with multiple GPUs."
     )
     return parser.parse_args()
+
+
+def export_accuracies(validation_split, seed, val_accuracy):
+    log_file_path = Path("logs/accuracies.csv")
+    if not log_file_path.exists():
+        fields = ['Model', 'Training Data Portion', 'Seed', 'Validation Accuracy']
+        with open(log_file_path, 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(fields)
+
+    fields = ['Supervised', f'{1 - validation_split}', f'{seed}', f'{val_accuracy:.4f}']
+    with open(log_file_path, 'a') as f:
+        writer = csv.writer(f)
+        writer.writerow(fields)
 
 
 def main():
@@ -97,6 +117,7 @@ def main():
         random_seed = tf.random.uniform(shape=(), minval=1, maxval=2 ** 32, dtype=tf.int64)
     else:
         random_seed = args.seed
+    # TODO - TF 2.10 enables to return train and val at once as a tuple, shorten then.
     train_ds = tf.keras.utils.image_dataset_from_directory(
         dataset,
         label_mode='categorical',
@@ -115,8 +136,11 @@ def main():
         validation_split=args.validation_split,
         subset="validation"
     )
-    train_ds = train_ds.shard(num_shards=tf.cast(1 / args.dataset_portion, tf.int64), index=0)
-    val_ds = val_ds.shard(num_shards=tf.cast(1 / args.dataset_portion, tf.int64), index=0)
+    # FIXME - Sharding causes validation TF.data.Dataset to somehow not be consistent.
+    if args.dataset_portion < 1.:
+        train_ds = train_ds.shard(num_shards=tf.cast(1 / args.dataset_portion, tf.int64), index=0)
+        val_ds = val_ds.shard(num_shards=tf.cast(1 / args.dataset_portion, tf.int64), index=0)
+
     print(f'Su - Number of train batches (size {args.batch_size}) loaded: '
           f'{tf.data.experimental.cardinality(train_ds)}.')
     print(f'Su - Number of validation batches (size {args.batch_size}) loaded: '
@@ -129,6 +153,9 @@ def main():
     )
     print(f"Su - Best validation accuracy {tf.math.reduce_max(history.history['val_accuracy']):.4f} "
           f"in epoch {tf.math.argmax(history.history['val_accuracy']) + 1}.")
+
+    if args.export_accuracy:
+        export_accuracies(args.validation_split, args.seed, tf.math.reduce_max(history.history['val_accuracy']))
 
 
 if __name__ == "__main__":
