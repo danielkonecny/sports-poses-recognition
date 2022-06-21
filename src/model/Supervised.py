@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for recognizing sports poses trained with supervision.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 19. 06. 2022
+Date: 21. 06. 2022
 """
 
 from argparse import ArgumentParser
@@ -28,7 +28,7 @@ def parse_arguments():
     parser.add_argument(
         '-s', '--validation_split',
         type=float,
-        default=0.2,
+        default=.2,
         help="Number between 0 and 1 representing proportion of dataset to be used for validation."
     )
     parser.add_argument(
@@ -36,6 +36,12 @@ def parse_arguments():
         type=int,
         default=5,
         help="Number of epochs to be performed on a dataset for fitting."
+    )
+    parser.add_argument(
+        '-p', '--dataset_portion',
+        type=float,
+        default=1.,
+        help="Portion of dataset that is used, number between 0 and 1 (0 not included)."
     )
     parser.add_argument(
         '-S', '--seed',
@@ -109,12 +115,20 @@ def main():
         validation_split=args.validation_split,
         subset="validation"
     )
+    train_ds = train_ds.shard(num_shards=tf.cast(1 / args.dataset_portion, tf.int64), index=0)
+    val_ds = val_ds.shard(num_shards=tf.cast(1 / args.dataset_portion, tf.int64), index=0)
+    print(f'Su - Number of train batches (size {args.batch_size}) loaded: '
+          f'{tf.data.experimental.cardinality(train_ds)}.')
+    print(f'Su - Number of validation batches (size {args.batch_size}) loaded: '
+          f'{tf.data.experimental.cardinality(val_ds)}.')
 
-    model.fit(
+    history = model.fit(
         train_ds,
         epochs=args.epochs,
         validation_data=val_ds
     )
+    print(f"Su - Best validation accuracy {tf.math.reduce_max(history.history['val_accuracy']):.4f} "
+          f"in epoch {tf.math.argmax(history.history['val_accuracy']) + 1}.")
 
 
 if __name__ == "__main__":

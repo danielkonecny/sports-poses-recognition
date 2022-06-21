@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Recognize image from a latent vector with a dense neural network.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 18. 06. 2022
+Date: 21. 06. 2022
 """
 
 from argparse import ArgumentParser
@@ -62,7 +62,7 @@ def parse_arguments():
     parser_fit.add_argument(
         '-s', '--validation_split',
         type=float,
-        default=0.2,
+        default=.2,
         help="Number between 0 and 1 representing proportion of dataset to be used for validation."
     )
     parser_fit.add_argument(
@@ -70,6 +70,12 @@ def parse_arguments():
         type=int,
         default=5,
         help="Number of epochs to be performed on a dataset for fitting."
+    )
+    parser_fit.add_argument(
+        '-p', '--dataset_portion',
+        type=float,
+        default=1.,
+        help="Portion of dataset that is used, number between 0 and 1 (0 not included)."
     )
     parser_fit.add_argument(
         '-S', '--seed',
@@ -157,7 +163,7 @@ class Recognizer:
         return cls(model)
 
     @staticmethod
-    def load_dataset(directory, batch_size, validation_split, seed=None, height=224, width=224):
+    def load_dataset(directory, batch_size, validation_split, dataset_portion=1., seed=None, height=224, width=224):
         logging.info("Re - Loading dataset...")
 
         directory = Path(directory)
@@ -168,6 +174,7 @@ class Recognizer:
             random_seed = seed
 
         with contextlib.redirect_stdout(None):
+            # TODO - TF 2.10 enables to return train and val at once as a tuple, shorten then.
             train_ds = tf.keras.utils.image_dataset_from_directory(
                 directory,
                 label_mode='categorical',
@@ -186,6 +193,8 @@ class Recognizer:
                 validation_split=validation_split,
                 subset="validation"
             )
+        train_ds = train_ds.shard(num_shards=tf.cast(1 / dataset_portion, tf.int64), index=0)
+        val_ds = val_ds.shard(num_shards=tf.cast(1 / dataset_portion, tf.int64), index=0)
 
         logging.info(f'Re -- Number of train batches (size {batch_size}) loaded: '
                      f'{tf.data.experimental.cardinality(train_ds)}.')
@@ -246,7 +255,8 @@ def fit(args):
     labels = [x.stem for x in sorted(Path(args.dataset).iterdir()) if x.is_dir()]
 
     recognizer = Recognizer.create(args.encoder_dir, len(labels))
-    train_ds, val_ds = recognizer.load_dataset(args.dataset, args.batch_size, args.validation_split, args.seed)
+    train_ds, val_ds = recognizer.load_dataset(args.dataset, args.batch_size, args.validation_split,
+                                               args.dataset_portion, args.seed)
 
     logging.info("Re - Fitting the model...")
     history = recognizer.model.fit(
