@@ -8,3 +8,4 @@ Pillow==9.0.1
 safe-gpu>=1.4
 scikit-learn~=1.0.2
 tensorboard~=2.7.0
+pandas~=1.4.2
