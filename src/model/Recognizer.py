@@ -129,6 +129,26 @@ def parse_arguments():
         action='store_true',
         help="Use to turn on additional text output about what is happening."
     )
+
+    parser_info = subparsers.add_parser(
+        'info',
+        help='Options when getting info about recognizer model.'
+    )
+    parser_info.add_argument(
+        'recognizer',
+        type=str,
+        help="Location of recognizer model as h5 file."
+    )
+    parser_info.add_argument(
+        '-g', '--gpu',
+        action='store_true',
+        help="Use to turn on Safe GPU command to run on a machine with multiple GPUs."
+    )
+    parser_info.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help="Use to turn on additional text output about what is happening."
+    )
     return parser.parse_args()
 
 
@@ -337,6 +357,13 @@ def predict(args):
         print(labels[label_index])
 
 
+def info(args):
+    recognizer = Recognizer.load(args.recognizer)
+    recognizer.model.summary()
+    recognizer.model.layers[0].summary()
+    recognizer.model.layers[0].layers[2].summary()
+
+
 def main():
     args = parse_arguments()
 
@@ -355,6 +382,8 @@ def main():
         fit(args)
     elif args.mode == "predict":
         predict(args)
+    elif args.mode == "info":
+        info(args)
 
 
 if __name__ == "__main__":

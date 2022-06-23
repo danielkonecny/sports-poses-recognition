@@ -94,6 +94,11 @@ def export_accuracies(validation_split, seed, val_accuracy):
         writer.writerow(fields)
 
 
+def info():
+    model = tf.keras.applications.resnet50.ResNet50(weights=None, classes=4)
+    model.summary()
+
+
 def main():
     args = parse_arguments()
 
@@ -160,3 +165,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # info()
