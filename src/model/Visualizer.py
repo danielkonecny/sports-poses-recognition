@@ -7,8 +7,10 @@ Date: 17. 06. 2022
 """
 
 from pathlib import Path
-import contextlib
+from contextlib import redirect_stdout, ExitStack
 from argparse import ArgumentParser
+import json
+import csv
 
 import numpy as np
 import tensorflow as tf
@@ -19,20 +21,45 @@ from src.model.Encoder import Encoder
 
 def parse_arguments():
     parser = ArgumentParser()
-    parser.add_argument(
+
+    subparsers = parser.add_subparsers(
+        dest="mode",
+        help='Choose the mode of recognizer model.'
+    )
+
+    parser_tensorboard = subparsers.add_parser(
+        'tensorboard',
+        help='Create visualization of the embeddings.'
+    )
+    parser_tensorboard.add_argument(
         'log_dir',
         type=str,
         help="Location of the log directory where visualization data are saved.",
     )
-    parser.add_argument(
+    parser_tensorboard.add_argument(
         'dataset_dir',
         type=str,
         help="Location of the data to be visualized.",
     )
-    parser.add_argument(
+    parser_tensorboard.add_argument(
         'encoder_dir',
         type=str,
         help="Location of the directory with encoder checkpoint.",
+    )
+
+    parser_latex = subparsers.add_parser(
+        'latex',
+        help='Process visualization export to latex plot.'
+    )
+    parser_latex.add_argument(
+        'json',
+        type=str,
+        help="Location of the JSON with visualization data.",
+    )
+    parser_latex.add_argument(
+        'labels',
+        type=str,
+        help="Location of the TSV with metadata about classes.",
     )
     return parser.parse_args()
 
@@ -40,7 +67,7 @@ def parse_arguments():
 def load_dataset(directory, batch_size=128):
     print("Vi - Loading dataset...")
 
-    with contextlib.redirect_stdout(None):
+    with redirect_stdout(None):
         dataset = tf.keras.utils.image_dataset_from_directory(
             directory,
             batch_size=batch_size,
@@ -77,21 +104,8 @@ def save_embeddings(dataset, label_names, encoder_dir, log_dir):
     checkpoint.save(log_dir / "embedding.ckpt")
 
 
-def visualize_embeddings(log_dir):
+def tensorboard(args):
     print("Vi - Visualizing...")
-
-    config = projector.ProjectorConfig()
-    embedding = config.embeddings.add()
-    # The name of the tensor will be suffixed by `/.ATTRIBUTES/VARIABLE_VALUE`.
-    embedding.tensor_name = "embedding/.ATTRIBUTES/VARIABLE_VALUE"
-    embedding.metadata_path = 'embedding_metadata.tsv'
-    projector.visualize_embeddings(log_dir, config)
-
-
-def main():
-    print("Launching Visualizer (Vi)...")
-
-    args = parse_arguments()
 
     log_dir = Path(args.log_dir)
     log_dir.mkdir(exist_ok=True, parents=True)
@@ -101,7 +115,54 @@ def main():
     dataset, label_names = load_dataset(dataset_dir)
     save_embeddings(dataset, label_names, encoder_dir, log_dir)
 
-    visualize_embeddings(log_dir)
+    config = projector.ProjectorConfig()
+    embedding = config.embeddings.add()
+    # The name of the tensor will be suffixed by `/.ATTRIBUTES/VARIABLE_VALUE`.
+    embedding.tensor_name = "embedding/.ATTRIBUTES/VARIABLE_VALUE"
+    embedding.metadata_path = 'embedding_metadata.tsv'
+    projector.visualize_embeddings(log_dir, config)
+
+
+def latex(args):
+    print("Vi - Exporting to LaTeX...")
+
+    log_dir = Path("logs/latex/t-sne")
+    log_dir.mkdir(exist_ok=True, parents=True)
+
+    with open(Path(args.labels)) as label_file:
+        labels = label_file.readlines()
+        labels = [label.rstrip() for label in labels]
+    unique_labels = set(labels)
+
+    with open(Path(args.json)) as json_file:
+        points = json.load(json_file)[0]["projections"]
+
+    with ExitStack() as stack:
+        csv_files = {
+            unique_label: stack.enter_context(open(log_dir / f'{unique_label}.csv', 'w'))
+            for unique_label in unique_labels
+        }
+
+        header = ["x", "y"]
+        writers = {}
+        for label, csv_file in csv_files.items():
+            writer = csv.writer(csv_file)
+            writer.writerow(header)
+            writers[label] = writer
+
+        for point, label in zip(points, labels):
+            writers[label].writerow([point['tsne-0'], point['tsne-1']])
+
+
+def main():
+    print("Launching Visualizer (Vi)...")
+
+    args = parse_arguments()
+
+    if args.mode == "tensorboard":
+        tensorboard(args)
+    elif args.mode == "latex":
+        latex(args)
 
 
 if __name__ == "__main__":
