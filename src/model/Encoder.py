@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for training of encoder model - encodes an image to a latent vector representing the sports pose.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 17. 06. 2022
+Date: 26. 06. 2022
 """
 
 from argparse import ArgumentParser
@@ -11,6 +11,7 @@ from pathlib import Path
 import sys
 import time
 import datetime
+import csv
 
 import tensorflow as tf
 from tensorflow.keras import layers
@@ -28,13 +29,13 @@ def parse_arguments():
         help="Location of the directory with dataset.",
     )
     parser.add_argument(
-        '-E', '--encoder_dir',
+        '-ed', '--encoder_dir',
         type=str,
         default='ckpts/encoder',
         help="Path to directory where encoder checkpoints will be stored.",
     )
     parser.add_argument(
-        '-L', '--log_dir',
+        '-ld', '--log_dir',
         type=str,
         default='logs',
         help="Path to directory where logs will be stored."
@@ -60,7 +61,7 @@ def parse_arguments():
     parser.add_argument(
         '-f', '--finetune_epochs',
         type=int,
-        default=5,
+        default=0,
         help="Number of epochs to be performed on a dataset for fine-tuning."
     )
     parser.add_argument(
@@ -79,6 +80,17 @@ def parse_arguments():
         '-r', '--restore',
         action='store_true',
         help="Use when wanting to restore training from checkpoints."
+    )
+    parser.add_argument(
+        '-S', '--seed',
+        type=int,
+        default=None,
+        help="Seed for dataset shuffling - use to get consistency for training and validation datasets."
+    )
+    parser.add_argument(
+        '-E', '--export_accuracy',
+        action='store_true',
+        help="Use to turn on exporting of validation accuracy to file logs/accuracies_encoder.csv."
     )
     parser.add_argument(
         '-H', '--height',
@@ -109,6 +121,20 @@ def parse_arguments():
         help="Use to turn on Safe GPU command to run on a machine with multiple GPUs."
     )
     return parser.parse_args()
+
+
+def export_accuracies(dimension, margin, seed, val_accuracy, epoch):
+    log_file_path = Path("logs/accuracies_encoder.csv")
+    if not log_file_path.exists():
+        fields = ['Embedding Dimension', 'Margin', 'Seed', 'Validation Accuracy', 'Epoch']
+        with open(log_file_path, 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(fields)
+
+    fields = [f'{dimension}', f'{margin:.2f}', f'{seed}', f'{val_accuracy:.4f}', f'{epoch}']
+    with open(log_file_path, 'a') as f:
+        writer = csv.writer(f)
+        writer.writerow(fields)
 
 
 @tf.function
@@ -289,7 +315,7 @@ class Encoder:
             if self.verbose:
                 print(f"En --- Checkpoint saved at {save_path}.")
 
-        return best_epoch, best_path
+        return best_epoch, best_path, best_acc
 
     def finetune(self, trn_ds, val_ds, epochs, dataset_size, batch_size, best_path=None):
         if self.verbose:
@@ -305,9 +331,9 @@ class Encoder:
         self.model.layers[3].trainable = True
         self.optimizer = tf.keras.optimizers.Adam(1e-5)
 
-        best_epoch, best_path = self.fit(trn_ds, val_ds, epochs, dataset_size, batch_size)
+        best_epoch, best_path, best_acc = self.fit(trn_ds, val_ds, epochs, dataset_size, batch_size)
 
-        return best_epoch, best_path
+        return best_epoch, best_path, best_acc
 
     def encode(self, images):
         if self.verbose:
@@ -353,20 +379,24 @@ def train():
     )
     encoder.set_writers(args.log_dir)
 
-    train_ds, val_ds = dataset_handler.get_dataset(args.validation_split)
+    train_ds, val_ds = dataset_handler.get_dataset(args.validation_split, args.seed)
     dataset_size = dataset_handler.get_dataset_size(args.validation_split)
 
-    best_epoch, best_path = encoder.fit(train_ds, val_ds, args.fit_epochs, dataset_size, args.batch_size)
+    best_epoch, best_path, best_acc = encoder.fit(train_ds, val_ds, args.fit_epochs, dataset_size, args.batch_size)
     if args.verbose:
         print("En - Training finished.")
-        print(f"En - Best accuracy in training was achieved in epoch {best_epoch} and is saved at {best_path}.")
+        print(f"En - Best accuracy in training was achieved in epoch {best_epoch + 1} and is saved at {best_path}.")
 
     if args.finetune_epochs > 0:
-        best_epoch, best_path = encoder.finetune(train_ds, val_ds, args.finetune_epochs,
-                                                 dataset_size, args.batch_size, best_path)
+        best_epoch, best_path, best_acc = encoder.finetune(train_ds, val_ds, args.finetune_epochs,
+                                                           dataset_size, args.batch_size, best_path)
         if args.verbose:
             print("En - Fine-tuning finished.")
-            print(f"En - Best accuracy in fine-tuning was achieved in epoch {best_epoch} and is saved at {best_path}.")
+            print(f"En - Best accuracy in fine-tuning was achieved in "
+                  f"epoch {best_epoch + 1} and is saved at {best_path}.")
+
+    if args.export_accuracy:
+        export_accuracies(args.encoding_dim, args.margin, args.seed, best_acc, best_epoch + 1)
 
 
 if __name__ == "__main__":

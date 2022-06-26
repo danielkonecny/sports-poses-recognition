@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for loading training data and rearranging them for specific training purposes.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 17. 06. 2022
+Date: 26. 06. 2022
 """
 
 from argparse import ArgumentParser
@@ -31,6 +31,12 @@ def parse_arguments():
         type=float,
         default=0.2,
         help="Number between 0 and 1 representing proportion of dataset to be used for validation."
+    )
+    parser.add_argument(
+        '-S', '--seed',
+        type=int,
+        default=None,
+        help="Seed for dataset shuffling - use to get consistency for training and validation datasets."
     )
     parser.add_argument(
         '-v', '--verbose',
@@ -135,7 +141,7 @@ class DatasetHandler:
 
         return ds, triplet_count
 
-    def get_dataset(self, validation_split):
+    def get_dataset(self, validation_split, seed=None):
         if self.verbose:
             print("DH - Loading train and validation dataset...")
 
@@ -153,12 +159,17 @@ class DatasetHandler:
             else:
                 ds = ds.concatenate(new_ds)
 
+        if seed is None:
+            random_seed = tf.random.uniform(shape=(), minval=1, maxval=2 ** 32, dtype=tf.int64)
+        else:
+            random_seed = seed
+
         buffer_size = 256
-        ds = ds.shuffle(buffer_size, reshuffle_each_iteration=False)
+        ds = ds.shuffle(buffer_size, seed=random_seed, reshuffle_each_iteration=False)
 
         val_size = int(round(size * validation_split))
-        train_ds = ds.skip(val_size)
-        val_ds = ds.take(val_size)
+        train_ds = ds.skip(val_size).shuffle(buffer_size)
+        val_ds = ds.take(val_size).shuffle(buffer_size)
 
         return train_ds, val_ds
 
@@ -174,14 +185,26 @@ def test():
     train_size, val_size = dataset_handler.get_dataset_size(args.validation_split)
     print(train_size, val_size)
 
-    train_ds, val_ds = dataset_handler.get_dataset(args.validation_split)
+    train_ds, val_ds = dataset_handler.get_dataset(args.validation_split, args.seed)
 
     for epoch in range(1):
         print(f"\nEpoch {epoch}")
+        print("Train")
         for batch in batch_provider(train_ds, args.batch_size):
-            print(batch.shape)
+            for a, p, n in batch:
+                plt.imshow(a.numpy() / 255.)
+                plt.axis("off")
+                plt.show()
+                plt.imshow(p.numpy() / 255.)
+                plt.axis("off")
+                plt.show()
+                plt.imshow(n.numpy() / 255.)
+                plt.axis("off")
+                plt.show()
+                break
             break
 
+        print("Validation")
         for batch in batch_provider(val_ds, args.batch_size):
             for a, p, n in batch:
                 plt.imshow(a.numpy() / 255.)
