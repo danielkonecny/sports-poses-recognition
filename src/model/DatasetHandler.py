@@ -169,7 +169,7 @@ class DatasetHandler:
 
         val_size = int(round(size * validation_split))
         train_ds = ds.skip(val_size).shuffle(buffer_size)
-        val_ds = ds.take(val_size).shuffle(buffer_size)
+        val_ds = ds.take(val_size)
 
         return train_ds, val_ds
 
