@@ -148,7 +148,7 @@ class DatasetHandler:
         ds = None
         size = 0
 
-        for scene_path in self.directory.glob("scene*"):
+        for scene_path in sorted(self.directory.glob("scene*")):
             if self.verbose:
                 print(f"DH -- Processing scene from path {scene_path}...")
 
