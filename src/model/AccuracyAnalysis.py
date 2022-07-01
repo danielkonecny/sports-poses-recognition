@@ -45,17 +45,26 @@ def print_plot(accuracies):
     grid style=dashed,
     legend pos=south east,
     legend style={{nodes={{scale=0.8, transform shaped}}}},
-]
-\\addplot[color=red,mark=o]
-    coordinates {{{accuracies['Self-Supervised (Top-1)']}}};
-\\addplot[color=orange,mark=otimes]
-    coordinates {{{accuracies['Self-Supervised (Top-3)']}}};
-\\addplot[color=blue,mark=square]
-    coordinates {{{accuracies['Supervised (Top-1)']}}};
-\\addplot[color=cyan,mark=square*]
-    coordinates {{{accuracies['Supervised (Top-3)']}}};
-\\legend{{Self-Supervised (Top-1), Self-Supervised (Top-3), Supervised (Top-1), Supervised (Top-3)}}
-\\end{{axis}}
+]""")
+
+    if len(accuracies) == 2:
+        print(f"""\\addplot[color=red,mark=o]
+        coordinates {{{accuracies['Self-Supervised (Top-1)']}}};
+    \\addplot[color=blue,mark=square]
+        coordinates {{{accuracies['Supervised (Top-1)']}}};
+    \\legend{{Self-Supervised (Top-1), Supervised (Top-1)}}""")
+    elif len(accuracies) == 4:
+        print(f"""\\addplot[color=red,mark=o]
+        coordinates {{{accuracies['Self-Supervised (Top-1)']}}};
+    \\addplot[color=orange,mark=*]
+        coordinates {{{accuracies['Self-Supervised (Top-3)']}}};
+    \\addplot[color=blue,mark=square]
+        coordinates {{{accuracies['Supervised (Top-1)']}}};
+    \\addplot[color=cyan,mark=square*]
+        coordinates {{{accuracies['Supervised (Top-3)']}}};
+    \\legend{{Self-Supervised (Top-1), Self-Supervised (Top-3), Supervised (Top-1), Supervised (Top-3)}}""")
+
+    print(f"""\\end{{axis}}
 \\end{{tikzpicture}}""")
 
 
