@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Recognize image from a latent vector with a dense neural network.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 21. 06. 2022
+Date: 01. 07. 2022
 """
 
 from argparse import ArgumentParser

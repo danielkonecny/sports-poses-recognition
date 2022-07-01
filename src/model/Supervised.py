@@ -3,13 +3,15 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for recognizing sports poses trained with supervision.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 21. 06. 2022
+Date: 01. 07. 2022
 """
 
 from argparse import ArgumentParser
 from pathlib import Path
-import csv
+
 import tensorflow as tf
+import pandas as pd
+
 from safe_gpu import safe_gpu
 
 
@@ -56,6 +58,13 @@ def parse_arguments():
         help="Use to turn on exporting of validation accuracy to file logs/accuracies.csv."
     )
     parser.add_argument(
+        '-t', '--top_k_accuracy',
+        nargs="+",
+        type=int,
+        default=[1],
+        help="Evaluate top K accuracy of the model, allows for multiple Ks."
+    )
+    parser.add_argument(
         '-H', '--height',
         type=int,
         default=224,
@@ -80,18 +89,24 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def export_accuracies(validation_split, seed, val_accuracy):
+def export_accuracies(fields):
     log_file_path = Path("logs/accuracies.csv")
-    if not log_file_path.exists():
-        fields = ['Model', 'Training Data Portion', 'Seed', 'Validation Accuracy']
-        with open(log_file_path, 'w') as f:
-            writer = csv.writer(f)
-            writer.writerow(fields)
+    field_names = list(fields.keys())
 
-    fields = ['Supervised', f'{1 - validation_split}', f'{seed}', f'{val_accuracy:.4f}']
-    with open(log_file_path, 'a') as f:
-        writer = csv.writer(f)
-        writer.writerow(fields)
+    if log_file_path.exists():
+        accuracy_df = pd.read_csv(log_file_path)
+        for field_name in field_names:
+            if field_name not in accuracy_df.columns:
+                print("Su - Accuracy logging file header is not corresponding. "
+                      "Saving the file as .bak and creating a new one.")
+                accuracy_df.to_csv(log_file_path.parent / (log_file_path.stem + '.bak.csv'), index=False)
+                accuracy_df = pd.DataFrame(columns=field_names)
+    else:
+        accuracy_df = pd.DataFrame(columns=field_names)
+
+    new_row = pd.DataFrame(fields, index=[0])
+    accuracy_df = pd.concat([accuracy_df, new_row])
+    accuracy_df.to_csv(log_file_path, index=False)
 
 
 def info():
@@ -106,6 +121,11 @@ def main():
         # noinspection PyUnusedLocal
         gpu_owner = safe_gpu.GPUOwner(placeholder_fn=safe_gpu.tensorflow_placeholder)
 
+    top_k_accuracies = []
+    for top_k in args.top_k_accuracy:
+        top_k_accuracy = tf.keras.metrics.TopKCategoricalAccuracy(k=top_k, name=f'top_{top_k}_categorical_accuracy')
+        top_k_accuracies.append(top_k_accuracy)
+
     dataset = Path(args.dataset)
     labels = [x.stem for x in sorted(dataset.iterdir()) if x.is_dir()]
     model = tf.keras.applications.resnet50.ResNet50(
@@ -115,7 +135,7 @@ def main():
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),
         loss=tf.keras.losses.CategoricalCrossentropy(),
-        metrics=['accuracy']
+        metrics=top_k_accuracies
     )
 
     if args.seed is None:
@@ -156,11 +176,21 @@ def main():
         epochs=args.epochs,
         validation_data=val_ds
     )
-    print(f"Su - Best validation accuracy {tf.math.reduce_max(history.history['val_accuracy']):.4f} "
-          f"in epoch {tf.math.argmax(history.history['val_accuracy']) + 1}.")
+
+    epoch = tf.math.argmax(history.history[f'val_top_{args.top_k_accuracy[0]}_categorical_accuracy']) + 1
+    val_accuracy = tf.math.reduce_max(history.history[f'val_top_{args.top_k_accuracy[0]}_categorical_accuracy'])
+    print(f"Su - Best validation accuracy {val_accuracy:.4f} in epoch {epoch:02d}.")
 
     if args.export_accuracy:
-        export_accuracies(args.validation_split, args.seed, tf.math.reduce_max(history.history['val_accuracy']))
+        fields = {
+            'Model': 'Supervised',
+            'Training Data Portion': f'{1 - args.validation_split}',
+            'Seed': f'{args.seed}'
+        }
+        for k in args.top_k_accuracy:
+            fields[f'Top-{k} Validation Accuracy'] = \
+                f'{history.history[f"val_top_{k}_categorical_accuracy"][epoch - 1]:.4f}'
+        export_accuracies(fields)
 
 
 if __name__ == "__main__":
