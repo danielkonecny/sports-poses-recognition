@@ -10,10 +10,10 @@ from argparse import ArgumentParser
 from pathlib import Path
 import logging
 import contextlib
-import csv
 
 import tensorflow as tf
 from tensorflow.keras import layers
+import pandas as pd
 
 from safe_gpu import safe_gpu
 
@@ -90,6 +90,13 @@ def parse_arguments():
         help="Use to turn on exporting of validation accuracy to file logs/accuracies.csv."
     )
     parser_fit.add_argument(
+        '-t', '--top_k_accuracy',
+        nargs="+",
+        type=int,
+        default=[1],
+        help="Evaluate top K accuracy of the model, allows for multiple Ks."
+    )
+    parser_fit.add_argument(
         '-g', '--gpu',
         action='store_true',
         help="Use to turn on Safe GPU command to run on a machine with multiple GPUs."
@@ -159,7 +166,7 @@ class Recognizer:
         logging.info("Recognizer (Re) initialized.")
 
     @classmethod
-    def create(cls, encoder_dir, label_count):
+    def create(cls, encoder_dir, label_count, top_ks=None):
         encoder = Encoder(encoder_dir=encoder_dir).model
         # TODO - Causes CustomMaskWarning in TF 2.7, will disappear when upgraded to higher version.
         config = encoder.get_config()
@@ -174,10 +181,17 @@ class Recognizer:
             name='model'
         )
 
+        top_k_accuracies = []
+        if top_ks is None:
+            top_ks = [1]
+        for top_k in top_ks:
+            top_k_accuracy = tf.keras.metrics.TopKCategoricalAccuracy(k=top_k, name=f'top_{top_k}_categorical_accuracy')
+            top_k_accuracies.append(top_k_accuracy)
+
         model.compile(
             optimizer=tf.keras.optimizers.Adam(),
             loss=tf.keras.losses.CategoricalCrossentropy(),
-            metrics=['accuracy']
+            metrics=top_k_accuracies
         )
 
         return cls(model)
@@ -279,24 +293,30 @@ class Recognizer:
         return predictions
 
     @staticmethod
-    def export_accuracies(validation_split, seed, val_accuracy):
+    def export_accuracies(fields):
         log_file_path = Path("logs/accuracies.csv")
-        if not log_file_path.exists():
-            fields = ['Model', 'Training Data Portion', 'Seed', 'Validation Accuracy']
-            with open(log_file_path, 'w') as f:
-                writer = csv.writer(f)
-                writer.writerow(fields)
+        field_names = list(fields.keys())
 
-        fields = ['Self-Supervised', f'{1 - validation_split}', f'{seed}', f'{val_accuracy:.4f}']
-        with open(log_file_path, 'a') as f:
-            writer = csv.writer(f)
-            writer.writerow(fields)
+        if log_file_path.exists():
+            accuracy_df = pd.read_csv(log_file_path)
+            for field_name in field_names:
+                if field_name not in accuracy_df.columns:
+                    logging.error("Re - Accuracy logging file header is not corresponding. "
+                                  "Saving the file as .bak and creating a new one.")
+                    accuracy_df.to_csv(log_file_path.parent / (log_file_path.stem + '.bak.csv'), index=False)
+                    accuracy_df = pd.DataFrame(columns=field_names)
+        else:
+            accuracy_df = pd.DataFrame(columns=field_names)
+
+        new_row = pd.DataFrame(fields, index=[0])
+        accuracy_df = pd.concat([accuracy_df, new_row])
+        accuracy_df.to_csv(log_file_path, index=False)
 
 
 def fit(args):
     labels = [x.stem for x in sorted(Path(args.dataset).iterdir()) if x.is_dir()]
 
-    recognizer = Recognizer.create(args.encoder_dir, len(labels))
+    recognizer = Recognizer.create(args.encoder_dir, len(labels), args.top_k_accuracy)
     train_ds, val_ds = recognizer.load_dataset(args.dataset, args.batch_size, args.validation_split,
                                                args.dataset_portion, args.seed)
 
@@ -307,9 +327,9 @@ def fit(args):
         validation_data=val_ds,
         callbacks=[
             tf.keras.callbacks.ModelCheckpoint(
-                filepath=(Path(args.ckpt_dir) / "ckpt-epoch{epoch:02d}-val_acc{val_accuracy:.2f}"),
+                filepath=(Path(args.ckpt_dir) / "ckpt-epoch{epoch:02d}"),
                 save_weights_only=True,
-                monitor='val_accuracy',
+                monitor=f'val_top_{args.top_k_accuracy[0]}_categorical_accuracy',
                 mode='max',
                 verbose=1
             )
@@ -317,13 +337,21 @@ def fit(args):
     )
 
     # Restore weights of model that had the highest accuracy on validation dataset.
-    epoch = tf.math.argmax(history.history['val_accuracy']) + 1
-    val_accuracy = tf.math.reduce_max(history.history['val_accuracy'])
-    recognizer.model.load_weights(Path(args.ckpt_dir) / f"ckpt-epoch{epoch:02d}-val_acc{val_accuracy:.2f}")
+    epoch = tf.math.argmax(history.history[f'val_top_{args.top_k_accuracy[0]}_categorical_accuracy']) + 1
+    val_accuracy = tf.math.reduce_max(history.history[f'val_top_{args.top_k_accuracy[0]}_categorical_accuracy'])
+    recognizer.model.load_weights(Path(args.ckpt_dir) / f"ckpt-epoch{epoch:02d}")
     logging.info(f"Re - Restored checkpoint from epoch {epoch:02d} with validation accuracy {val_accuracy:.6f}.")
 
     if args.export_accuracy:
-        recognizer.export_accuracies(args.validation_split, args.seed, val_accuracy)
+        fields = {
+            'Model': 'Self-Supervised',
+            'Training Data Portion': f'{1 - args.validation_split}',
+            'Seed': f'{args.seed}'
+        }
+        for k in args.top_k_accuracy:
+            fields[f'Top-{k} Validation Accuracy'] = \
+                f'{history.history[f"val_top_{k}_categorical_accuracy"][epoch - 1]:.4f}'
+        recognizer.export_accuracies(fields)
 
     logging.info("Re - Evaluating the model...")
     recognizer.model.evaluate(val_ds)
