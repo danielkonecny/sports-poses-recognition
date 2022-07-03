@@ -1,8 +1,7 @@
 # Project ignores
-out/
 data/
 logs/
-ckpts*/
+ckpts/
 models/
 
 # JetBrains ignores
