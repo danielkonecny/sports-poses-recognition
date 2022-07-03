@@ -32,39 +32,35 @@ def parse_arguments():
 def print_plot(accuracies):
     print(f"""\n\\centering
 \\begin{{tikzpicture}}
-\\begin{{axis}}[
-    title={{Comparison of self-supervised and supervised models' accuracy}},
-    xlabel={{Portion of dataset used for training}},
-    ylabel={{Accuracy on validation dataset}},
-    xmin=0, xmax=1,
-    ymin=0, ymax=1,
-    xtick={{0,0.1,0.2,0.4,0.6,0.8,1}},
-    ytick={{0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1}},
-    xmajorgrids=true,
-    ymajorgrids=true,
-    grid style=dashed,
-    legend pos=south east,
-    legend style={{nodes={{scale=0.8, transform shaped}}}},
-]""")
+\t\\begin{{axis}}[
+\t\ttitle={{Comparison of self-supervised and supervised models' accuracy}},
+\t\txlabel={{Portion of dataset used for training}},
+\t\tylabel={{Accuracy on validation dataset}},
+\t\txmin=0, xmax=1,
+\t\tymin=0, ymax=1,
+\t\txtick={{0,0.1,0.2,0.4,0.6,0.8,1}},
+\t\tytick={{0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1}},
+\t\txmajorgrids=true,
+\t\tymajorgrids=true,
+\t\tgrid style=dashed,
+\t\tlegend pos=south east,
+\t\tlegend style={{nodes={{scale=0.8}}}},
+\t]""")
 
-    if len(accuracies) == 2:
-        print(f"""\\addplot[color=red,mark=o]
-        coordinates {{{accuracies['Self-Supervised (Top-1)']}}};
-    \\addplot[color=blue,mark=square]
-        coordinates {{{accuracies['Supervised (Top-1)']}}};
-    \\legend{{Self-Supervised (Top-1), Supervised (Top-1)}}""")
-    elif len(accuracies) == 4:
-        print(f"""\\addplot[color=red,mark=o]
-        coordinates {{{accuracies['Self-Supervised (Top-1)']}}};
-    \\addplot[color=orange,mark=*]
-        coordinates {{{accuracies['Self-Supervised (Top-3)']}}};
-    \\addplot[color=blue,mark=square]
-        coordinates {{{accuracies['Supervised (Top-1)']}}};
-    \\addplot[color=cyan,mark=square*]
-        coordinates {{{accuracies['Supervised (Top-3)']}}};
-    \\legend{{Self-Supervised (Top-1), Self-Supervised (Top-3), Supervised (Top-1), Supervised (Top-3)}}""")
+    colors = ["red", "orange", "blue", "cyan"]
+    marks = ["o", "*", "square", "square*"]
 
-    print(f"""\\end{{axis}}
+    legend = "\\legend{"
+
+    for (key, value), color, mark in zip(sorted(accuracies.items()), colors, marks):
+        print(f"""\t\t\\addplot[color={color},mark={mark}]
+\t\t\tcoordinates {{{value}}};""")
+        legend += key + ", "
+
+    legend = legend[:-2] + "}"
+
+    print(f"""\t\t{legend}
+\t\\end{{axis}}
 \\end{{tikzpicture}}""")
 
 
