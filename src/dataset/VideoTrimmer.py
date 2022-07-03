@@ -13,8 +13,8 @@ from functools import partial
 
 import cv2
 
-from src.utils.params import parse_arguments
-import src.utils.video_edit as video_edit
+from src.dataset.utils.params import parse_arguments
+import src.dataset.utils.video_edit as video_edit
 
 
 def on_change(video, video_name, trackbar_value):

@@ -14,8 +14,8 @@ from pathlib import Path
 import numpy as np
 import cv2
 
-from src.utils.params import parse_arguments
-import src.utils.video_edit as video_edit
+from src.dataset.utils.params import parse_arguments
+import src.dataset.utils.video_edit as video_edit
 
 import contextlib
 

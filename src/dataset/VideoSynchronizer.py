@@ -15,8 +15,8 @@ import numpy as np
 from scipy.stats import pearsonr
 
 import OpticalFlowCalculator
-from src.utils.params import parse_arguments
-import src.utils.video_edit as video_edit
+from src.dataset.utils.params import parse_arguments
+import src.dataset.utils.video_edit as video_edit
 
 
 class VideoSynchronizer:

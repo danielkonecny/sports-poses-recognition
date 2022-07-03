@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import cv2
 
-from src.utils.params import parse_arguments
+from src.dataset.utils.params import parse_arguments
 
 COMMON_INFO_IDX = 0
 POINTS_FOUND_THRESH = 5

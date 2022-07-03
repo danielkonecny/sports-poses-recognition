@@ -13,7 +13,7 @@ from collections import deque
 import numpy as np
 import cv2
 
-from src.utils.params import parse_arguments
+from src.dataset.utils.params import parse_arguments
 
 
 def calc_optical_flow(old_frame, new_frame):

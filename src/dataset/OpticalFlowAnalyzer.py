@@ -10,7 +10,7 @@ import numpy as np
 from scipy.stats import normaltest
 from matplotlib import pyplot
 
-from src.utils.params import parse_arguments
+from src.dataset.utils.params import parse_arguments
 
 
 def show_info(flow):

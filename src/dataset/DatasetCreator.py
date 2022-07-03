@@ -13,7 +13,7 @@ import re
 import cv2
 
 import MotionDetector
-from src.utils.params import parse_arguments
+from src.dataset.utils.params import parse_arguments
 
 
 class DatasetCreator:
