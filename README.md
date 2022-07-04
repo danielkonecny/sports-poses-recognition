@@ -21,6 +21,6 @@ Author: Daniel Konecny (xkonec75).
 
 1. Enter the project root directory `sports-poses-recognition`.
 2. Activate the virtual environment: `source ".env/bin/activate"`.
-3. Make sure you have the project root directory in `PYTHONPATH` because of relative imports in the scripts: `export PYTHONPATH="${PYTHONPATH}:."`
-4. Launch all scripts from the root directory, e.g. `python3 src/model/Encoder.py ...`
+3. Make sure you have the project root directory in `PYTHONPATH` because of relative imports in the scripts: `export PYTHONPATH="${PYTHONPATH}:."`.
+4. Launch all scripts from the root directory, e.g. `python3 src/model/Encoder.py ...`.
 5. Use argument `-h` or `--help` for all the necessary information about every script.

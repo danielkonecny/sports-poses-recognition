@@ -3,12 +3,16 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for analyzing optical flow data from videos.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 01. 11. 2021
+Date: 05. 07. 2022
 """
 
 import numpy as np
 from scipy.stats import normaltest
-from matplotlib import pyplot
+import matplotlib.pyplot as plt
+
+from pathlib import Path
+import cv2
+import flow_vis
 
 from src.dataset.utils.params import parse_arguments
 
@@ -50,8 +54,8 @@ def test_normality(flow):
 
 
 def plot_flow(flow):
-    pyplot.hist(flow, bins=100, range=[np.min(flow), np.max(flow)], log=True)
-    pyplot.show()
+    plt.hist(flow, bins=100, range=[np.min(flow), np.max(flow)], log=True)
+    plt.show()
 
 
 def detect_movement(flow):
@@ -113,11 +117,30 @@ class OpticalFlowAnalyzer:
         detect_movement(self.right_flow)
 
 
+def visualize(file):
+    cap = cv2.VideoCapture(file)
+    file_path = Path(file)
+
+    counter = 0
+    ret, prev_frame = cap.read()
+    while ret:
+        ret, current_frame = cap.read()
+
+        flow = cv2.optflow.calcOpticalFlowDenseRLOF(prev_frame, current_frame, None)
+        flow_color = flow_vis.flow_to_color(flow, convert_to_bgr=True)
+        cv2.imwrite(f"{file_path.parent / f'image{counter:09d}.png'}", flow_color)
+
+        counter += 1
+        prev_frame = current_frame
+
+
 def main():
     args = parse_arguments()
 
     batch_provider = OpticalFlowAnalyzer(args.location)
     batch_provider.analyze()
+
+    # visualize(args.location)
 
 
 if __name__ == "__main__":
