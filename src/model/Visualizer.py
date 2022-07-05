@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for visualizing of encoded sports poses.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 17. 06. 2022
+Date: 06. 07. 2022
 """
 
 from pathlib import Path
@@ -46,6 +46,11 @@ def parse_arguments():
         type=str,
         help="Location of the directory with encoder checkpoint.",
     )
+    parser_tensorboard.add_argument(
+        'encoding_dim',
+        type=int,
+        help="Dimension of latent space in which an image is represented."
+    )
 
     parser_latex = subparsers.add_parser(
         'latex',
@@ -82,10 +87,10 @@ def load_dataset(directory, batch_size=128):
     return dataset, class_names
 
 
-def save_embeddings(dataset, label_names, encoder_dir, log_dir):
+def save_embeddings(dataset, label_names, encoder_dir, log_dir, encoding_dim):
     print("Vi - Saving embeddings with labels...")
 
-    encoder = Encoder(encoder_dir=encoder_dir)
+    encoder = Encoder(encoder_dir=encoder_dir, encoding_dim=encoding_dim)
     embeddings = None
 
     metadata_path = log_dir / "embedding_metadata.tsv"
@@ -113,7 +118,7 @@ def tensorboard(args):
     encoder_dir = Path(args.encoder_dir)
 
     dataset, label_names = load_dataset(dataset_dir)
-    save_embeddings(dataset, label_names, encoder_dir, log_dir)
+    save_embeddings(dataset, label_names, encoder_dir, log_dir, args.encoding_dim)
 
     config = projector.ProjectorConfig()
     embedding = config.embeddings.add()
