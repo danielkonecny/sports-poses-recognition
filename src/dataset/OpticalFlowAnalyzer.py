@@ -3,7 +3,7 @@ Self-Supervised Learning for Recognition of Sports Poses in Image - Master's The
 Module for analyzing optical flow data from videos.
 Organisation: Brno University of Technology - Faculty of Information Technology
 Author: Daniel Konecny (xkonec75)
-Date: 05. 07. 2022
+Date: 10. 07. 2022
 """
 
 import numpy as np
@@ -126,9 +126,11 @@ def visualize(file):
     while ret:
         ret, current_frame = cap.read()
 
-        flow = cv2.optflow.calcOpticalFlowDenseRLOF(prev_frame, current_frame, None)
-        flow_color = flow_vis.flow_to_color(flow, convert_to_bgr=True)
-        cv2.imwrite(f"{file_path.parent / f'image{counter:09d}.png'}", flow_color)
+        if counter in [312, 386, 1127, 1664]:
+            flow = cv2.optflow.calcOpticalFlowDenseRLOF(prev_frame, current_frame, None)
+            flow_color = flow_vis.flow_to_color(flow, convert_to_bgr=True)
+            cv2.imwrite(f"{file_path.parent / f'flow{counter:09d}.png'}", flow_color)
+            cv2.imwrite(f"{file_path.parent / f'frame{counter:09d}.png'}", current_frame)
 
         counter += 1
         prev_frame = current_frame
@@ -137,10 +139,10 @@ def visualize(file):
 def main():
     args = parse_arguments()
 
-    batch_provider = OpticalFlowAnalyzer(args.location)
-    batch_provider.analyze()
+    # batch_provider = OpticalFlowAnalyzer(args.location)
+    # batch_provider.analyze()
 
-    # visualize(args.location)
+    visualize(args.location)
 
 
 if __name__ == "__main__":
