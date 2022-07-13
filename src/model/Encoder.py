@@ -292,6 +292,7 @@ class Encoder:
         best_epoch = -1
         best_path = ""
 
+        # FIXME - Check if it does not break the fine-tuning.
         # Freeze backbone (ResNet50).
         self.model.layers[3].trainable = False
 
@@ -399,5 +400,23 @@ def train():
         export_accuracies(args.encoding_dim, args.margin, args.seed, best_acc, best_epoch + 1)
 
 
+def info():
+    args = parse_arguments()
+
+    encoder = Encoder(
+        args.height,
+        args.width,
+        args.channels,
+        args.encoding_dim,
+        args.margin,
+        args.encoder_dir,
+        args.restore,
+        args.verbose
+    )
+
+    encoder.model.summary()
+
+
 if __name__ == "__main__":
     train()
+    # info()
