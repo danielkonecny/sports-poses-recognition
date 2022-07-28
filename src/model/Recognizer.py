@@ -380,9 +380,11 @@ def predict(args):
     predictions = recognizer.predict(images)
 
     for prediction in predictions:
-        label_index = tf.math.argmax(prediction[0])
-        logging.info(f"Label {labels[label_index]:>9} with {prediction[0][label_index]:6.2%} certainty.")
-        print(labels[label_index])
+        k = 3
+        _, indices = tf.math.top_k(prediction[0], k)
+        for i, index in enumerate(indices):
+            logging.info(f"Top-{i+1} Label {labels[index]:>9} "
+                         f"with {prediction[0][index]:6.2%} certainty.")
 
 
 def info(args):
